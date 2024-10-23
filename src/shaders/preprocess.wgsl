@@ -50,13 +50,16 @@ struct RenderSettings {
 }
 
 struct Gaussian {
+    // 4 16-bit floats for position (x,y,z) and opacity packed as 2 u32.
     pos_opacity: array<u32,2>,
+    // 4 16-bit floats for rotation (x,y,z,w) packed as 2 u32.
     rot: array<u32,2>,
+    // 3 16-bit floats for scale (x,y,z) packed as 2 u32.
     scale: array<u32,2>
 };
 
 struct Splat {
-    //TODO: store information for 2D splat rendering
+    dummy: vec3<f32>,
 };
 
 //TODO: bind your data here
@@ -108,11 +111,70 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
     return  max(vec3<f32>(0.), result);
 }
 
+fn frustumCull(pos: vec4<f32>, scale: vec3<f32>, camera: CameraUniforms) -> bool {
+    let pos_in_view_space = (camera.view * pos).xyz;
+
+    var enlarged_scale = abs(scale) * 1.1;
+    let min_bounds = pos_in_view_space - enlarged_scale;
+    let max_bounds = pos_in_view_space + enlarged_scale;
+
+    let near_plane = 0.01;
+    let far_plane = 100.0;
+
+    if (max_bounds.z < near_plane || min_bounds.z > far_plane) {
+        // Before or beyond near/far planes.
+        return false;
+    }
+
+    // Isosceles triangle up to aabb min z.
+    let left_plane = min_bounds.z * -1.0;
+    // Isosceles triangle up to aabb max z.
+    let right_plane = max_bounds.z * 1.0;
+    if (max_bounds.x < left_plane || min_bounds.x > right_plane) {
+        return false;
+    }
+
+    // Similarly.
+    let bottom_plane = min_bounds.z * -1.0;
+    let top_plane = max_bounds.z * 1.0;
+    if (max_bounds.y < bottom_plane || min_bounds.y > top_plane) {
+        return false;
+    }
+
+    return true;
+}
+
 @compute @workgroup_size(workgroupSize,1,1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
     //TODO: set up pipeline as described in instruction
 
-    let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
+    // let focal = camera.focal;
+
+    // let gaussian = gaussians[idx];
+
+    // let padded_size = sort_infos.padded_size;
+    // let sort_depth = sort_depths[0];
+    // let sort_indices = sort_indices[0];
+    // let dispatch_y = sort_dispatch.dispatch_y;
+
+    let gaussian = gaussians[idx];
+    
+    let pos = vec4<f32>(unpack2x16float(gaussian.pos_opacity[0]).xy, unpack2x16float(gaussian.pos_opacity[1]).x, 1.0);
+    let scale = vec3<f32>(unpack2x16float(gaussian.scale[0]).xy, unpack2x16float(gaussian.scale[1]).x);
+
+    // Quaternion.
+    let rot_xy = unpack2x16float(gaussian.rot[0]);
+    let rot_zw = unpack2x16float(gaussian.rot[1]);
+    let rotation = vec4<f32>(rot_xy.x, rot_xy.y, rot_zw.x, rot_zw.y);
+
+    let view_proj = camera.proj * camera.view;
+
+    if (!frustumCull(pos, scale, view_proj)) {
+        return;
+    }
+
+    // Dispatch handling logic
+    let keys_per_dispatch = workgroupSize * sortKeyPerThread;
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
 }
