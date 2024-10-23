@@ -7,9 +7,13 @@ struct CameraUniforms {
     focal: vec2<f32>
 };
 
+// On the CPU side, a Float16Array of 11 entries. Interpreted as follows:
 struct Gaussian {
+    // 4 16-bit floats for position (x,y,z) and opacity packed as 2 u32.
     pos_opacity: array<u32,2>,
+    // 4 16-bit floats for rotation (x,y,z,w) packed as 2 u32.
     rot: array<u32,2>,
+    // 3 16-bit floats for scale (x,y,z) packed as 2 u32.
     scale: array<u32,2>
 }
 
@@ -32,9 +36,14 @@ fn vs_main(
     let vertex = gaussians[in_vertex_index];
     let a = unpack2x16float(vertex.pos_opacity[0]);
     let b = unpack2x16float(vertex.pos_opacity[1]);
-    let pos = vec4<f32>(a.x, a.y, b.x, 1.);
+    var pos = vec4<f32>(a.x, a.y, b.x, 1.);
 
     // TODO: MVP calculations
+
+    // Scale and rotation applies to the Gaussian splats at this point,
+    // but not to the point itself.
+
+    pos = camera.proj * camera.view * pos;
     out.position = pos;
 
     return out;
