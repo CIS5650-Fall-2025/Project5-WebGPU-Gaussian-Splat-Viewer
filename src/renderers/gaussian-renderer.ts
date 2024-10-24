@@ -80,6 +80,27 @@ export default function get_renderer(
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
       sorter.sort(encoder);
+        
+        // begin a new render pass
+        const render_pass = encoder.beginRenderPass({
+            label: 'render_pass',
+            colorAttachments: [
+                {
+                    view: texture_view,
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                    clearValue: [
+                        0.0,
+                        0.0,
+                        0.0,
+                        1.0,
+                    ],
+                },
+            ],
+        });
+        
+        // end the render pass
+        render_pass.end();
     },
     camera_buffer,
   };
