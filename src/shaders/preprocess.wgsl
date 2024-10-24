@@ -159,8 +159,8 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // declare a temporary size for testing
     var size = vec2f(0.01f, 0.01f);
     
-    // declare the splat data index as the current thread index for testing
-    let index = idx;
+    // atomically increment the key size and acquire the index
+    let index = atomicAdd(&sort_infos.keys_size, 1u);
     
     // pack the position and size
     let packed_x_y = pack2x16float(screen_space_position);

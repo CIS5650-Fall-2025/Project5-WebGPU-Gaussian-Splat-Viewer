@@ -135,10 +135,7 @@ export default function get_renderer(
         GPUBufferUsage.COPY_DST | GPUBufferUsage.INDIRECT,
         new Uint32Array([
             6,
-            
-            // render all the data for testing
-            pc.num_points,
-            
+            0,
             0,
             0,
         ])
@@ -238,6 +235,13 @@ export default function get_renderer(
         
         // perform sorting
         sorter.sort(encoder);
+        
+        // update the indirect buffer
+        encoder.copyBufferToBuffer(
+            sorter.sort_info_buffer, 0,
+            indirect_buffer, 4,
+            4
+        );
         
         // begin a new render pass
         const render_pass = encoder.beginRenderPass({
