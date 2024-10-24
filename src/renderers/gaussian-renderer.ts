@@ -36,6 +36,12 @@ export default function get_renderer(
 
   const nulling_data = new Uint32Array([0]);
 
+    // create the null buffer
+    const null_buffer = createBuffer(
+        device, 'null_buffer', 4,
+        GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, nulling_data
+    );
+    
   // ===============================================
   //    Create Compute Pipeline and Bind Groups
   // ===============================================
@@ -91,6 +97,33 @@ export default function get_renderer(
     ],
   });
 
+    // compute the splat data size
+    var splat_data_size = 0;
+    
+    // increase the splat data size for the position and size data
+    splat_data_size += 4
+    
+    // create the splat data buffer
+    const splat_data_buffer = createBuffer(
+        device, 'splat_data_buffer', splat_data_size * pc.num_points,
+        GPUBufferUsage.STORAGE, null
+    );
+    
+    // create the compute pipeline bind group for all other resources
+    const compute_pipeline_bind_group = device.createBindGroup({
+        label: 'compute_pipeline_bind_group',
+        layout: preprocess_pipeline.getBindGroupLayout(3),
+        entries: [
+            
+            // declare a new entry for the splat data buffer
+            {
+                binding: 0,
+                resource: {
+                    buffer: splat_data_buffer,
+                },
+            },
+        ],
+    });
 
   // ===============================================
   //    Create Render Pipeline and Bind Groups
@@ -133,6 +166,22 @@ export default function get_renderer(
             entryPoint: 'fs_main',
         },
     });
+    
+    // create the render pipeline bind group for all other resources
+    const render_pipeline_bind_group = device.createBindGroup({
+        label: 'render_pipeline_bind_group',
+        layout: render_pipeline.getBindGroupLayout(0),
+        entries: [
+            
+            // declare a new entry for the splat data buffer
+            {
+                binding: 0,
+                resource: {
+                    buffer: splat_data_buffer,
+                },
+            },
+        ],
+    });
 
   // ===============================================
   //    Command Encoder Functions
@@ -156,6 +205,9 @@ export default function get_renderer(
         // bind the sort bind group
         compute_pass.setBindGroup(2, sort_bind_group);
         
+        // bind the bind group that contains all other resources
+        compute_pass.setBindGroup(3, compute_pipeline_bind_group);
+        
         // execute the preprocess shader
         compute_pass.dispatchWorkgroups(Math.ceil(pc.num_points / C.histogram_wg_size));
         
@@ -168,6 +220,18 @@ export default function get_renderer(
   // ===============================================
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
+        
+        // reset the sorting buffers
+        encoder.copyBufferToBuffer(
+            null_buffer, 0,
+            sorter.sort_info_buffer, 0,
+            4
+        );
+        encoder.copyBufferToBuffer(
+            null_buffer, 0,
+            sorter.sort_dispatch_indirect_buffer, 0,
+            4
+        );
         
         // perform preprocessing
         compute(encoder);
@@ -195,6 +259,9 @@ export default function get_renderer(
         
         // bind the render pipeline
         render_pass.setPipeline(render_pipeline);
+        
+        // bind the bind group that contains all other resources
+        render_pass.setBindGroup(0, render_pipeline_bind_group);
         
         // perform drawing
         render_pass.drawIndirect(indirect_buffer, 0);

@@ -9,19 +9,34 @@ struct Splat {
     packed_x_y_w_h: array<u32,2>,
 };
 
+// declare the storage buffer for the splats
+@group(0) @binding(0)
+var<storage, read> splats: array<Splat>;
+
 @vertex
 fn vs_main(
 
+    // declare the argument for the instance index
+    @builtin(instance_index) global_instance_index: u32,
+    
     // declare the argument for the vertex index
     @builtin(vertex_index) local_vertex_index: u32
     
 ) -> VertexOutput {
     
-    // create some temporary data for testing
-    let x = 0.0f;
-    let y = 0.0f;
-    let w = 0.1f;
-    let h = 0.1f;
+    // declare the splat data index as the instance index for testing
+    let index = global_instance_index;
+    
+    // acquire the current splat data
+    let splat = splats[index];
+    
+    // unpack the position and size
+    let unpacked_x_y = unpack2x16float(splat.packed_x_y_w_h[0]);
+    let unpacked_w_h = unpack2x16float(splat.packed_x_y_w_h[1]);
+    let x = unpacked_x_y.x;
+    let y = unpacked_x_y.y;
+    let w = unpacked_w_h.x * 2.0f;
+    let h = unpacked_w_h.y * 2.0f;
     
     // create an array of positions
     let positions = array<vec2f, 6>(

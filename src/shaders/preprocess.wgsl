@@ -78,6 +78,10 @@ var<storage, read_write> sort_indices : array<u32>;
 @group(2) @binding(3)
 var<storage, read_write> sort_dispatch: DispatchIndirect;
 
+// declare the storage buffer for the splats
+@group(3) @binding(0)
+var<storage, read_write> splats: array<Splat>;
+
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
     //TODO: access your binded sh_coeff, see load.ts for how it is stored
@@ -120,7 +124,26 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
 @compute @workgroup_size(workgroupSize,1,1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
-    //TODO: set up pipeline as described in instruction
+    
+    // exit the loop if the index is out of bound
+    if (idx >= arrayLength(&gaussians)) {
+        return;
+    }
+    
+    // acquire the current gaussian data
+    let gaussian_data = gaussians[idx];
+    
+    // unpack the position and opacity data
+    let pos_opacity_x_y = unpack2x16float(gaussian_data.pos_opacity[0]);
+    let pos_opacity_z_w = unpack2x16float(gaussian_data.pos_opacity[1]);
+    let position = vec4f(pos_opacity_x_y.x, pos_opacity_x_y.y, pos_opacity_z_w.x, 1.0f);
+    let opacity = pos_opacity_z_w.y;
+    
+    // compute the clip-space position
+    let clip_space_position = camera.proj * camera.view * position;
+    
+    // compute the screen-space position
+    let screen_space_position = clip_space_position.xy / clip_space_position.w;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
@@ -132,4 +155,18 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let sort_depth = sort_depths[0];
     let sort_index = sort_indices[0];
     let dispatch_z = sort_dispatch.dispatch_z;
+    
+    // declare a temporary size for testing
+    var size = vec2f(0.01f, 0.01f);
+    
+    // declare the splat data index as the current thread index for testing
+    let index = idx;
+    
+    // pack the position and size
+    let packed_x_y = pack2x16float(screen_space_position);
+    let packed_w_h = pack2x16float(size);
+    
+    // update the splat data
+    splats[index].packed_x_y_w_h[0] = packed_x_y;
+    splats[index].packed_x_y_w_h[1] = packed_w_h;
 }
