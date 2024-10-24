@@ -213,7 +213,15 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let max_radius = length(scale) * 1.1;
     let size_ndc = vec2<f32>(max_radius, max_radius);
 
+    atomicAdd(&sort_infos.keys_size, 1u);
+    sort_depths[idx] = u32(pos_ndc.z * 1000.0);
+    sort_indices[idx] = idx;
+
     // Dispatch handling logic
     let keys_per_dispatch = workgroupSize * sortKeyPerThread;
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
+
+    if (idx % keys_per_dispatch == 0u) {
+        atomicAdd(&sort_dispatch.dispatch_x, 1u);
+    }
 }
