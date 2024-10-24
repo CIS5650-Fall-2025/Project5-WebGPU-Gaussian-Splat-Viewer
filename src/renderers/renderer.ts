@@ -121,7 +121,16 @@ export default async function init(
       'gaussian_multiplier',
       {min: 0, max: 1.5}
     ).on('change', (e) => {
-      //Bind constants to the gaussian renderer.
+        
+        // update the render settings buffer
+        if (gaussian_renderer) {
+            device.queue.writeBuffer(
+                gaussian_renderer.render_settings_buffer,
+                0, new Float32Array([
+                    params.gaussian_multiplier,
+                ])
+            );
+        }
     });
   }
 

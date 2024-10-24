@@ -6,6 +6,8 @@ import { Renderer } from './renderer';
 
 export interface GaussianRenderer extends Renderer {
 
+    // declare the render settings buffer
+    render_settings_buffer: GPUBuffer,
 }
 
 // Utility to create GPU buffers
@@ -40,6 +42,14 @@ export default function get_renderer(
     const null_buffer = createBuffer(
         device, 'null_buffer', 4,
         GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, nulling_data
+    );
+    
+    // create the render settings buffer
+    const render_settings_buffer = createBuffer(
+        device, 'render_settings_buffer', 8,
+        GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM, new Float32Array([
+            1.0, pc.sh_deg,
+        ])
     );
     
   // ===============================================
@@ -120,6 +130,14 @@ export default function get_renderer(
                 binding: 0,
                 resource: {
                     buffer: splat_data_buffer,
+                },
+            },
+            
+            // declare a new entry for the render settings buffer
+            {
+                binding: 1,
+                resource: {
+                    buffer: render_settings_buffer,
                 },
             },
         ],
@@ -274,5 +292,8 @@ export default function get_renderer(
         render_pass.end();
     },
     camera_buffer,
+      
+      // return the render settings buffer
+      render_settings_buffer,
   };
 }

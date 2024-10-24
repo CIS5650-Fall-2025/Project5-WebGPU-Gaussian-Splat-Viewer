@@ -82,6 +82,10 @@ var<storage, read_write> sort_dispatch: DispatchIndirect;
 @group(3) @binding(0)
 var<storage, read_write> splats: array<Splat>;
 
+// declare the uniform buffer for the render settings
+@group(3) @binding(1)
+var<uniform> render_settings: RenderSettings;
+
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
     //TODO: access your binded sh_coeff, see load.ts for how it is stored
@@ -168,6 +172,9 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     
     // declare a temporary size for testing
     var size = vec2f(0.01f, 0.01f);
+    
+    // update the size for testing
+    size *= render_settings.gaussian_scaling;
     
     // atomically increment the key size and acquire the index
     let index = atomicAdd(&sort_infos.keys_size, 1u);
