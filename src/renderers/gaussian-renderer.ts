@@ -159,6 +159,7 @@ export default function get_renderer(
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
       preprocess(encoder);
       sorter.sort(encoder);
+      render(encoder, texture_view);
     },
     camera_buffer,
   };
