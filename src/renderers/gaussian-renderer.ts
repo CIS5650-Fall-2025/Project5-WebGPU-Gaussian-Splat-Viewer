@@ -111,7 +111,7 @@ export default function get_renderer(
     var splat_data_size = 0;
     
     // increase the splat data size for the position and size data
-    splat_data_size += 4
+    splat_data_size += 8;
     
     // create the splat data buffer
     const splat_data_buffer = createBuffer(
