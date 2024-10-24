@@ -39,6 +39,10 @@ export default function get_renderer(
   const splat_buffer_size = pc.num_points * (4 * 3 + 2 * 2 + 9 * 4);
   const splat_buffer = createBuffer(device, 'Splat Buffer', splat_buffer_size, GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX);
 
+  const splat_indirect_buffer_size = 4 * 4;
+  const splat_indirect_buffer = createBuffer(device, 'Splat Indirect Buffer', splat_indirect_buffer_size, GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE);
+  device.queue.writeBuffer(splat_indirect_buffer, 0, new Uint32Array([4, 0, 0, 0]));
+
   // ===============================================
   //    Create Compute Pipeline and Bind Groups
   // ===============================================
@@ -148,7 +152,7 @@ export default function get_renderer(
 
     render_pass.setPipeline(render_pipeline);
     render_pass.setBindGroup(0, splat_bind_group_2);
-
+    render_pass.drawIndirect(splat_indirect_buffer, 0);
     render_pass.end();
   };
 
