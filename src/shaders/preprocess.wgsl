@@ -261,6 +261,22 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         two_dimensional_covariance_matrix[1][1]
     );
     
+    // compute the determinant
+    var determinant = two_dimensional_covariance.x * two_dimensional_covariance.z;
+    determinant -= two_dimensional_covariance.y * two_dimensional_covariance.y;
+    if (determinant == 0.0f) {
+        return;
+    }
+    
+    // compute the radius
+    let mid = (two_dimensional_covariance.x + two_dimensional_covariance.z) * 0.5f;
+    let lambda1 = mid + sqrt(max(0.1f, mid * mid - determinant));
+    let lambda2 = mid - sqrt(max(0.1f, mid * mid - determinant));
+    let radius = ceil(3.0f * sqrt(max(lambda1, lambda2)));
+    
+    // compute the size
+    let size = vec2f(radius, radius) / camera.viewport;
+    
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
     
@@ -271,12 +287,6 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let sort_depth = sort_depths[0];
     let sort_index = sort_indices[0];
     let dispatch_z = sort_dispatch.dispatch_z;
-    
-    // declare a temporary size for testing
-    var size = vec2f(0.01f, 0.01f);
-    
-    // update the size for testing
-    size *= render_settings.gaussian_scaling;
     
     // atomically increment the key size and acquire the index
     let index = atomicAdd(&sort_infos.keys_size, 1u);
