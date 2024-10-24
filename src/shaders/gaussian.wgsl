@@ -30,11 +30,38 @@ fn vs_main(
 ) -> VertexOutput {
     //TODO: reconstruct 2D quad based on information from splat, pass 
     var out: VertexOutput;
-    out.position = vec4<f32>(1. ,1. , 0., 1.);
+    let splat = splats[vertex_index / 6u];
+
+    let quad_positions = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(-1.0, 1.0),
+        vec2<f32>(1.0, 1.0), vec2<f32>(1.0, -1.0), vec2<f32>(-1.0, 1.0)
+    );
+
+    let vertex_pos_ndc = vec2<f32>(
+        quad_positions[vertex_index].x * splat.size_ndc.x + splat.pos_ndc.x,
+        quad_positions[vertex_index].y * splat.size_ndc.y + splat.pos_ndc.y
+    );
+
+    out.position = vec4<f32>(vertex_pos_ndc, splat.pos_ndc.z, 1.0);
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(1.);
+    let conic_matrix = mat3x3<f32>(
+        in.conic_matrix_0,
+        in.conic_matrix_1,
+        in.conic_matrix_2
+    );
+
+    let screen_pos = in.position.xyz;
+    let distance_from_center = dot(screen_pos, conic_matrix * screen_pos);
+
+    if (distance_from_center > 1.0) {
+        discard;
+    }
+
+    let decay = exp(-distance_from_center);
+
+    return vec4<f32>(in.color.rgb, in.color.a * decay);
 }
