@@ -96,6 +96,32 @@ export default function get_renderer(
     ],
   });
 
+  const render_pipeline = device.createRenderPipeline({
+    label: 'render',
+    vertex: {
+      module: device.createShaderModule({ code: renderWGSL }),
+      entryPoint: 'vs_main',
+    },
+    fragment: {
+      module: device.createShaderModule({ code: renderWGSL }),
+      entryPoint: 'fs_main',
+      targets: [{ format: presentation_format }],
+    },
+    primitive: {
+      topology: 'triangle-list',
+      cullMode: 'none',
+    },
+    layout: 'auto',
+  });
+
+  const splat_bind_group_2 = device.createBindGroup({
+    label: 'splat data',
+    layout: render_pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: splat_buffer } },
+    ],
+  });
+
   // ===============================================
   //    Command Encoder Functions
   // ===============================================
@@ -110,6 +136,21 @@ export default function get_renderer(
     preprocess_pass.end();
   };
 
+  const render = (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
+    const render_pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: texture_view,
+        loadOp: 'clear',
+        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        storeOp: 'store',
+      }],
+    });
+
+    render_pass.setPipeline(render_pipeline);
+    render_pass.setBindGroup(0, splat_bind_group_2);
+
+    render_pass.end();
+  };
 
   // ===============================================
   //    Return Render Object
