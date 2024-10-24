@@ -212,6 +212,55 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         three_dimensional_covariance_matrix[2][2],
     );
     
+    // compute the t vector
+    var t = (camera.view * position).xyz;
+    let limx = 0.65f * camera.viewport.x / camera.focal.x;
+    let limy = 0.65f * camera.viewport.y / camera.focal.y;
+    let txtz = t.x / t.z;
+    let tytz = t.y / t.z;
+    t.x = min(limx, max(-limx, txtz)) * t.z;
+    t.y = min(limy, max(-limy, tytz)) * t.z;
+    
+    // compute the J matrix
+    let J = mat3x3f(
+        camera.focal.x / t.z, 0.0f, -(camera.focal.x * t.x) / (t.z * t.z),
+        0.0f, camera.focal.y / t.z, -(camera.focal.y * t.y) / (t.z * t.z),
+        0.0f, 0.0f, 0.0f
+    );
+    
+    // compute the W matrix
+    let W = transpose(mat3x3f(
+        camera.view[0].xyz, camera.view[1].xyz, camera.view[2].xyz
+    ));
+    
+    // compute the T matrix
+    let T = W * J;
+    
+    // compute the V matrix
+    let V = mat3x3f(
+        three_dimensional_covariance[0],
+        three_dimensional_covariance[1],
+        three_dimensional_covariance[2],
+        three_dimensional_covariance[1],
+        three_dimensional_covariance[3],
+        three_dimensional_covariance[4],
+        three_dimensional_covariance[2],
+        three_dimensional_covariance[4],
+        three_dimensional_covariance[5]
+    );
+    
+    // compute the 2D covariance matrix
+    var two_dimensional_covariance_matrix = transpose(T) * transpose(V) * T;
+    two_dimensional_covariance_matrix[0][0] += 0.3f;
+    two_dimensional_covariance_matrix[1][1] += 0.3f;
+    
+    // compute the 2D covariance
+    let two_dimensional_covariance = vec3f(
+        two_dimensional_covariance_matrix[0][0],
+        two_dimensional_covariance_matrix[0][1],
+        two_dimensional_covariance_matrix[1][1]
+    );
+    
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
     
