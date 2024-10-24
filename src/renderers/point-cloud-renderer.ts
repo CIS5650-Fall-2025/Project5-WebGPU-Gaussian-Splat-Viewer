@@ -42,8 +42,7 @@ export default function get_renderer(
   const render = (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
     const pass = encoder.beginRenderPass({
       label: 'point cloud render',
-      colorAttachments: [
-        {
+      colorAttachments: [{
           view: texture_view,
           loadOp: 'clear',
           storeOp: 'store',

@@ -4,7 +4,8 @@ struct VertexOutput {
 };
 
 struct Splat {
-    //TODO: information defined in preprocess compute shader
+    xy: vec2f,
+    size: vec2f,
 };
 
 @vertex
