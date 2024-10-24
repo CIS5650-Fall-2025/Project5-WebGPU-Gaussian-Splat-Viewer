@@ -145,6 +145,16 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // compute the screen-space position
     let screen_space_position = clip_space_position.xy / clip_space_position.w;
 
+    // compute the view space depth
+    let view_space_depth = (camera.view * position).z;
+    
+    // perform frustum culling
+    if (screen_space_position.x < -1.2f || screen_space_position.x > 1.2f ||
+        screen_space_position.y < -1.2f || screen_space_position.y > 1.2f ||
+        view_space_depth < 0.0f) {
+        return;
+    }
+    
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
     
