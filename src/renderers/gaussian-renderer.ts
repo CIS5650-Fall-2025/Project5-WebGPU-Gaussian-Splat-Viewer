@@ -36,6 +36,9 @@ export default function get_renderer(
 
   const nulling_data = new Uint32Array([0]);
 
+  const splat_buffer_size = pc.num_points * (4 * 3 + 2 * 2 + 9 * 4);
+  const splat_buffer = createBuffer(device, 'Splat Buffer', splat_buffer_size, GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX);
+
   // ===============================================
   //    Create Compute Pipeline and Bind Groups
   // ===============================================
@@ -85,6 +88,14 @@ export default function get_renderer(
     ],
   });
 
+  const splat_bind_group = device.createBindGroup({
+    label: 'splats',
+    layout: preprocess_pipeline.getBindGroupLayout(3),
+    entries: [
+      { binding: 0, resource: { buffer: splat_buffer } },
+    ],
+  });
+
   // ===============================================
   //    Command Encoder Functions
   // ===============================================
@@ -95,6 +106,7 @@ export default function get_renderer(
     preprocess_pass.setBindGroup(0, camera_bind_group);
     preprocess_pass.setBindGroup(1, gaussian_bind_group);
     preprocess_pass.setBindGroup(2, sort_bind_group);
+    preprocess_pass.setBindGroup(3, splat_bind_group);
     preprocess_pass.end();
   };
 

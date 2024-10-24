@@ -59,7 +59,10 @@ struct Gaussian {
 };
 
 struct Splat {
-    dummy: vec3<f32>,
+    pos_ndc: vec3<f32>,
+    size_ndc: vec2<f32>,
+    conic_matrix: mat3x3<f32>,
+    color: vec4<f32>,
 };
 
 //TODO: bind your data here
@@ -229,6 +232,11 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     atomicAdd(&sort_infos.keys_size, 1u);
     sort_depths[idx] = u32(pos_ndc.z * 1000.0);
     sort_indices[idx] = idx;
+
+    splats[idx].pos_ndc = pos_ndc.xyz;
+    splats[idx].size_ndc = size_ndc;
+    splats[idx].conic_matrix = covariance;
+    splats[idx].color = vec4<f32>(color, opacity); 
 
     // Dispatch handling logic
     let keys_per_dispatch = workgroupSize * sortKeyPerThread;
