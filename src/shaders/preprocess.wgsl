@@ -60,8 +60,11 @@ struct Splat {
     // declare a packed variable for the position and size
     packed_x_y_w_h: array<u32,2>,
     
-    // declare a packed variable for color
+    // declare a packed variable for the color
     packed_color: array<u32,2>,
+    
+    // declare a packed variable for the conic and opacity
+    packed_conic_opacity: array<u32,2>,
 };
 
 // declare the uniform buffer for the camera
@@ -97,7 +100,7 @@ var<storage, read> colors: array<u32>;
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
     
     // compute the base index
-    let base_index = splat_idx * 24 + (c_idx / 2) * 3;
+    let base_index = splat_idx * 24 + (c_idx / 2) * 3 + c_idx % 2;
 
     // unpack and return the color
     if (c_idx % 2 == 0) {
@@ -331,6 +334,21 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // update the splat data
     splats[index].packed_color[0] = packed_r_g;
     splats[index].packed_color[1] = packed_b_a;
+
+    // compute the conic
+    let conic = vec3f(
+        two_dimensional_covariance.z / determinant,
+        -two_dimensional_covariance.y / determinant,
+        two_dimensional_covariance.x / determinant,
+    );
+
+    // pack the conic and opacity
+    let packed_conic_xy = pack2x16float(conic.xy);
+    let packed_conic_z_opacity = pack2x16float(vec2f(conic.z, 1.0f / (1.0f + exp(-opacity))));
+    
+    // update the splat data
+    splats[index].packed_conic_opacity[0] = packed_conic_xy;
+    splats[index].packed_conic_opacity[1] = packed_conic_z_opacity;
 
     // update the sorting data
     sort_depths[index] = bitcast<u32>(100.0f - view_space_depth);

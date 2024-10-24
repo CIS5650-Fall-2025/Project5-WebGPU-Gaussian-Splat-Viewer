@@ -115,6 +115,9 @@ export default function get_renderer(
     
     // increase the splat data size for the color data
     splat_data_size += 8;
+    
+    // increase the splat data size for the conic and opacity data
+    splat_data_size += 8;
 
     // create the splat data buffer
     const splat_data_buffer = createBuffer(
@@ -187,6 +190,20 @@ export default function get_renderer(
             targets: [
                 {
                     format: presentation_format,
+
+                    // enable alpha blending
+                    blend: {
+                        color: {
+                            srcFactor: 'one',
+                            dstFactor: 'one-minus-src-alpha',
+                            operation: 'add',
+                        },
+                        alpha: {
+                            srcFactor: 'one',
+                            dstFactor: 'one-minus-src-alpha',
+                            operation: 'add',
+                        },
+                    },
                 },
             ],
             entryPoint: 'fs_main',
@@ -212,6 +229,14 @@ export default function get_renderer(
                 binding: 1,
                 resource: {
                     buffer: sorter.ping_pong[0].sort_indices_buffer,
+                },
+            },
+
+            // declare a new entry for the camera buffer
+            {
+                binding: 2,
+                resource: {
+                    buffer: camera_buffer,
                 },
             },
         ],
