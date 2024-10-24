@@ -52,6 +52,34 @@ export default function get_renderer(
     },
   });
 
+    // create the camera bind group
+    const camera_bind_group = device.createBindGroup({
+        label: 'camera_bind_group',
+        layout: preprocess_pipeline.getBindGroupLayout(0),
+        entries: [
+            {
+                binding: 0,
+                resource: {
+                    buffer: camera_buffer,
+                },
+            },
+        ],
+    });
+    
+    // create the gaussian bind group
+    const gaussian_bind_group = device.createBindGroup({
+        label: 'gaussian_bind_group',
+        layout: preprocess_pipeline.getBindGroupLayout(1),
+        entries: [
+            {
+                binding: 0,
+                resource: {
+                    buffer: pc.gaussian_3d_buffer,
+                },
+            },
+        ],
+    });
+    
   const sort_bind_group = device.createBindGroup({
     label: 'sort',
     layout: preprocess_pipeline.getBindGroupLayout(2),
@@ -110,13 +138,42 @@ export default function get_renderer(
   //    Command Encoder Functions
   // ===============================================
   
+    // create the compute function
+    const compute = (encoder: GPUCommandEncoder) => {
+        
+        // begin a new compute pass
+        const compute_pass = encoder.beginComputePass();
+        
+        // bind the preprocess pipeline
+        compute_pass.setPipeline(preprocess_pipeline);
+        
+        // bind the camera bind group
+        compute_pass.setBindGroup(0, camera_bind_group);
+        
+        // bind the gaussian bind group
+        compute_pass.setBindGroup(1, gaussian_bind_group);
+        
+        // bind the sort bind group
+        compute_pass.setBindGroup(2, sort_bind_group);
+        
+        // execute the preprocess shader
+        compute_pass.dispatchWorkgroups(Math.ceil(pc.num_points / C.histogram_wg_size));
+        
+        // end the compute pass
+        compute_pass.end();
+    };
 
   // ===============================================
   //    Return Render Object
   // ===============================================
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
-      sorter.sort(encoder);
+        
+        // perform preprocessing
+        compute(encoder);
+        
+        // perform sorting
+        sorter.sort(encoder);
         
         // begin a new render pass
         const render_pass = encoder.beginRenderPass({

@@ -56,10 +56,19 @@ struct Gaussian {
 };
 
 struct Splat {
-    //TODO: store information for 2D splat rendering
+    
+    // declare a packed variable for the position and size
+    packed_x_y_w_h: array<u32,2>,
 };
 
-//TODO: bind your data here
+// declare the uniform buffer for the camera
+@group(0) @binding(0)
+var<uniform> camera: CameraUniforms;
+
+// declare the storage buffer for the gaussians
+@group(1) @binding(0)
+var<storage, read> gaussians: array<Gaussian>;
+
 @group(2) @binding(0)
 var<storage, read_write> sort_infos: SortInfos;
 @group(2) @binding(1)
@@ -115,4 +124,12 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
+    
+    // acquire some data from each bound resource for testing
+    let view = camera.view;
+    let pos_opacity = gaussians[idx].pos_opacity;
+    let passes = sort_infos.passes;
+    let sort_depth = sort_depths[0];
+    let sort_index = sort_indices[0];
+    let dispatch_z = sort_dispatch.dispatch_z;
 }
