@@ -72,10 +72,19 @@ var<storage, read_write> sort_indices : array<u32>;
 @group(2) @binding(3)
 var<storage, read_write> sort_dispatch: DispatchIndirect;
 
+@group(1) @binding(0)
+var<storage,read> gaussians : array<Gaussian>;
+@group(1) @binding(1) 
+var<storage,read> sh_coefs : array<array<u32,24>>;
+
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
     //TODO: access your binded sh_coeff, see load.ts for how it is stored
-    return vec3<f32>(0.0);
+    return vec3<f32>(
+        unpack2x16float(sh_coefs[splat_idx][(3u*c_idx)*0.5])[(3u*c_idx) % 2u], 
+        unpack2x16float(sh_coefs[splat_idx][(3u*c_idx+1u)*0.5])[(3u*c_idx+1u) % 2u], 
+        unpack2x16float(sh_coefs[splat_idx][(3u*c_idx+2u)*0.5])[(3u*c_idx+2u) % 2u]
+    );
 }
 
 // spherical harmonics evaluation with Condon–Shortley phase
@@ -212,6 +221,10 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let pos_ndc = camera.proj * pos;
     let max_radius = length(scale) * 1.1;
     let size_ndc = vec2<f32>(max_radius, max_radius);
+
+    let color = computeColorFromSH(normalize(pos.xyz), idx, 1u);
+    let pos_opacity = unpack2x16float(gaussian.pos_opacity[0]);
+    let opacity = pos_opacity.y;
 
     atomicAdd(&sort_infos.keys_size, 1u);
     sort_depths[idx] = u32(pos_ndc.z * 1000.0);
