@@ -68,6 +68,43 @@ export default function get_renderer(
   //    Create Render Pipeline and Bind Groups
   // ===============================================
   
+    // create the indirect buffer
+    const indirect_buffer = createBuffer(
+        device, 'indirect_buffer', 16,
+        GPUBufferUsage.COPY_DST | GPUBufferUsage.INDIRECT,
+        new Uint32Array([
+            6,
+            
+            // render all the data for testing
+            pc.num_points,
+            
+            0,
+            0,
+        ])
+    );
+    
+    // create the render pipeline
+    const render_pipeline = device.createRenderPipeline({
+        label: 'render_pipeline',
+        layout: 'auto',
+        vertex: {
+            module: device.createShaderModule({
+                code: renderWGSL
+            }),
+            entryPoint: 'vs_main',
+        },
+        fragment: {
+            module: device.createShaderModule({
+                code: renderWGSL
+            }),
+            targets: [
+                {
+                    format: presentation_format,
+                },
+            ],
+            entryPoint: 'fs_main',
+        },
+    });
 
   // ===============================================
   //    Command Encoder Functions
@@ -98,6 +135,12 @@ export default function get_renderer(
                 },
             ],
         });
+        
+        // bind the render pipeline
+        render_pass.setPipeline(render_pipeline);
+        
+        // perform drawing
+        render_pass.drawIndirect(indirect_buffer, 0);
         
         // end the render pass
         render_pass.end();
