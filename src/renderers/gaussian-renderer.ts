@@ -113,6 +113,9 @@ export default function get_renderer(
     // increase the splat data size for the position and size data
     splat_data_size += 8;
     
+    // increase the splat data size for the color data
+    splat_data_size += 8;
+
     // create the splat data buffer
     const splat_data_buffer = createBuffer(
         device, 'splat_data_buffer', splat_data_size * pc.num_points,
@@ -138,6 +141,14 @@ export default function get_renderer(
                 binding: 1,
                 resource: {
                     buffer: render_settings_buffer,
+                },
+            },
+            
+            // declare a new entry for the color buffer
+            {
+                binding: 2,
+                resource: {
+                    buffer: pc.sh_buffer,
                 },
             },
         ],

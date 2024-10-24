@@ -59,6 +59,9 @@ struct Splat {
     
     // declare a packed variable for the position and size
     packed_x_y_w_h: array<u32,2>,
+    
+    // declare a packed variable for color
+    packed_color: array<u32,2>,
 };
 
 // declare the uniform buffer for the camera
@@ -86,10 +89,26 @@ var<storage, read_write> splats: array<Splat>;
 @group(3) @binding(1)
 var<uniform> render_settings: RenderSettings;
 
+// declare the storage buffer for the colors
+@group(3) @binding(2)
+var<storage, read> colors: array<u32>;
+
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
-    //TODO: access your binded sh_coeff, see load.ts for how it is stored
-    return vec3<f32>(0.0);
+    
+    // compute the base index
+    let base_index = splat_idx * 24 + (c_idx / 2) * 3;
+
+    // unpack and return the color
+    if (c_idx % 2 == 0) {
+        let color_r_g = unpack2x16float(colors[base_index + 0]);
+        let color_b_r = unpack2x16float(colors[base_index + 1]);
+        return vec3f(color_r_g.x, color_r_g.y, color_b_r.x);
+    } else {
+        let color_b_r = unpack2x16float(colors[base_index + 0]);
+        let color_g_b = unpack2x16float(colors[base_index + 1]);
+        return vec3f(color_b_r.y, color_g_b.x, color_g_b.y);
+    }
 }
 
 // spherical harmonics evaluation with Condon–Shortley phase
@@ -299,6 +318,20 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     splats[index].packed_x_y_w_h[0] = packed_x_y;
     splats[index].packed_x_y_w_h[1] = packed_w_h;
     
+    // compute the direction vector
+    let direction = normalize(position.xyz - camera.view_inv[3].xyz);
+
+    // acquire the color
+    let color = computeColorFromSH(direction, idx, u32(render_settings.sh_deg));
+
+    // pack the color
+    let packed_r_g = pack2x16float(color.rg);
+    let packed_b_a = pack2x16float(vec2f(color.b, 1.0f));
+    
+    // update the splat data
+    splats[index].packed_color[0] = packed_r_g;
+    splats[index].packed_color[1] = packed_b_a;
+
     // update the sorting data
     sort_depths[index] = bitcast<u32>(100.0f - view_space_depth);
     sort_indices[index] = index;

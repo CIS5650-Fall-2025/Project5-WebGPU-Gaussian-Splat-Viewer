@@ -1,12 +1,17 @@
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
-    //TODO: information passed from vertex shader to fragment shader
+
+    // declare the variable for the vertex color
+    @location(0) color: vec4f,
 };
 
 struct Splat {
     
     // declare a packed variable for the position and size
     packed_x_y_w_h: array<u32,2>,
+    
+    // declare a packed variable for color
+    packed_color: array<u32,2>,
 };
 
 // declare the storage buffer for the splats
@@ -59,17 +64,33 @@ fn vs_main(
         0.0f, 1.0f
     );
     
+    // unpack the color
+    let unpacked_r_g = unpack2x16float(splat.packed_color[0]);
+    let unpacked_b_a = unpack2x16float(splat.packed_color[1]);
+    let r = unpacked_r_g.x;
+    let g = unpacked_r_g.y;
+    let b = unpacked_b_a.x;
+    let a = unpacked_b_a.y;
+
+    // compute the vertex color
+    let color = vec4(r, g, b, a);
+
     // create the vertex output data
     var vertex_output: VertexOutput;
     
     // update the vertex output position
     vertex_output.position = position;
     
+    // update the vertex output color
+    vertex_output.color = color;
+
     // return the vertex output data
     return vertex_output;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(1.);
+    
+    // return the vertex color for testing
+    return in.color;
 }
