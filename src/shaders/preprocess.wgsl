@@ -159,6 +159,59 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         return;
     }
     
+    // unpack the rotation
+    let rotation_x_y = unpack2x16float(gaussian_data.rot[0]);
+    let rotation_z_w = unpack2x16float(gaussian_data.rot[1]);
+    let rotation = vec4f(
+        rotation_x_y.x,
+        rotation_x_y.y,
+        rotation_z_w.x,
+        rotation_z_w.y
+    );
+    let r = rotation.x;
+    let x = rotation.y;
+    let y = rotation.z;
+    let z = rotation.w;
+    
+    // compute R matrix
+    let R = mat3x3f(
+        1.0f - 2.0f * (y * y + z * z), 2.0f * (x * y - r * z), 2.0f * (x * z + r * y),
+        2.0f * (x * y + r * z), 1.0f - 2.0f * (x * x + z * z), 2.0f * (y * z - r * x),
+        2.0f * (x * z - r * y), 2.0f * (y * z + r * x), 1.0f - 2.0f * (x * x + y * y)
+    );
+    
+    // unpack the scale
+    let scale_x_y = unpack2x16float(gaussian_data.scale[0]);
+    let scale_z_w = unpack2x16float(gaussian_data.scale[1]);
+    let scale = exp(vec3f(
+        scale_x_y.x,
+        scale_x_y.y,
+        scale_z_w.x
+    ));
+    
+    // compute the S matrix
+    let S = mat3x3f(
+        scale.x * render_settings.gaussian_scaling, 0.0f, 0.0f,
+        0.0f, scale.y * render_settings.gaussian_scaling, 0.0f,
+        0.0f, 0.0f, scale.z * render_settings.gaussian_scaling
+    );
+    
+    // compute the M matrix
+    let M = S * R;
+    
+    // compute the 3D covariance matrix
+    let three_dimensional_covariance_matrix = transpose(M) * M;
+    
+    // compute the 3D covariance
+    let three_dimensional_covariance = array<f32, 6>(
+        three_dimensional_covariance_matrix[0][0],
+        three_dimensional_covariance_matrix[0][1],
+        three_dimensional_covariance_matrix[0][2],
+        three_dimensional_covariance_matrix[1][1],
+        three_dimensional_covariance_matrix[1][2],
+        three_dimensional_covariance_matrix[2][2],
+    );
+    
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
     
