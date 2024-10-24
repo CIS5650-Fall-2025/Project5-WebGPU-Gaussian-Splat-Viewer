@@ -144,6 +144,39 @@ fn frustumCull(pos: vec4<f32>, scale: vec3<f32>, camera: CameraUniforms) -> bool
     return true;
 }
 
+fn quaternionToMatrix(q: vec4<f32>) -> mat3x3<f32> {
+    let x2 = q.x * q.x;
+    let y2 = q.y * q.y;
+    let z2 = q.z * q.z;
+    let xy = q.x * q.y;
+    let xz = q.x * q.z;
+    let yz = q.y * q.z;
+    let wx = q.w * q.x;
+    let wy = q.w * q.y;
+    let wz = q.w * q.z;
+
+    return mat3x3<f32>(
+        1.0 - 2.0 * (y2 + z2), 2.0 * (xy - wz),      2.0 * (xz + wy),
+        2.0 * (xy + wz),      1.0 - 2.0 * (x2 + z2), 2.0 * (yz - wx),
+        2.0 * (xz - wy),      2.0 * (yz + wx),       1.0 - 2.0 * (x2 + y2)
+    );
+}
+
+fn computeCovarianceMatrix(rotation: vec4<f32>, scale: vec3<f32>, scaling_factor: f32) -> mat3x3<f32> {
+    let R = quaternionToMatrix(rotation);
+    let RT = transpose(R);
+
+    let S = mat3x3<f32>(
+        vec3<f32>(scale.x, 0.0, 0.0),
+        vec3<f32>(0.0, scale.y, 0.0),
+        vec3<f32>(0.0, 0.0, scale.z)
+    ) * scaling_factor;
+    let ST = transpose(S);
+
+    let covariance = R * S * ST * RT;
+    return covariance;
+}
+
 @compute @workgroup_size(workgroupSize,1,1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
@@ -173,6 +206,8 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     if (!frustumCull(pos, scale, view_proj)) {
         return;
     }
+
+    let covariance = computeCovarianceMatrix(rotation, scale, 1.0);
 
     // Dispatch handling logic
     let keys_per_dispatch = workgroupSize * sortKeyPerThread;
