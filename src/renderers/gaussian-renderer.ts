@@ -68,17 +68,43 @@ export default function get_renderer(
   //    Create Render Pipeline and Bind Groups
   // ===============================================
   
+  const camera_bind_group = device.createBindGroup({
+    label: 'point cloud camera',
+    layout: preprocess_pipeline.getBindGroupLayout(0),
+    entries: [
+      {binding: 0, resource: { buffer: camera_buffer }},
+    ],
+  });
+
+  const gaussian_bind_group = device.createBindGroup({
+    label: 'point cloud gaussians',
+    layout: preprocess_pipeline.getBindGroupLayout(1),
+    entries: [
+      {binding: 0, resource: { buffer: pc.gaussian_3d_buffer }},
+      {binding: 1, resource: { buffer: pc.sh_buffer }},
+    ],
+  });
 
   // ===============================================
   //    Command Encoder Functions
   // ===============================================
-  
+
+  const preprocess = (encoder: GPUCommandEncoder) => {
+    const preprocess_pass = encoder.beginComputePass();
+    preprocess_pass.setPipeline(preprocess_pipeline);
+    preprocess_pass.setBindGroup(0, camera_bind_group);
+    preprocess_pass.setBindGroup(1, gaussian_bind_group);
+    preprocess_pass.setBindGroup(2, sort_bind_group);
+    preprocess_pass.end();
+  };
+
 
   // ===============================================
   //    Return Render Object
   // ===============================================
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
+      preprocess(encoder);
       sorter.sort(encoder);
     },
     camera_buffer,
