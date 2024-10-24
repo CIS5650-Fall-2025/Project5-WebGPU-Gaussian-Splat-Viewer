@@ -13,6 +13,10 @@ struct Splat {
 @group(0) @binding(0)
 var<storage, read> splats: array<Splat>;
 
+// declare the storage buffer for the sort indices
+@group(0) @binding(1)
+var<storage, read> sort_indices : array<u32>;
+
 @vertex
 fn vs_main(
 
@@ -24,8 +28,8 @@ fn vs_main(
     
 ) -> VertexOutput {
     
-    // declare the splat data index as the instance index for testing
-    let index = global_instance_index;
+    // acquire the splat data index
+    let index = sort_indices[global_instance_index];
     
     // acquire the current splat data
     let splat = splats[index];

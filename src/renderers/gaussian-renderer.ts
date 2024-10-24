@@ -195,6 +195,14 @@ export default function get_renderer(
                     buffer: splat_data_buffer,
                 },
             },
+            
+            // declare a new entry for the sort indices buffer
+            {
+                binding: 1,
+                resource: {
+                    buffer: sorter.ping_pong[0].sort_indices_buffer,
+                },
+            },
         ],
     });
 

@@ -298,4 +298,13 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // update the splat data
     splats[index].packed_x_y_w_h[0] = packed_x_y;
     splats[index].packed_x_y_w_h[1] = packed_w_h;
+    
+    // update the sorting data
+    sort_depths[index] = bitcast<u32>(100.0f - view_space_depth);
+    sort_indices[index] = index;
+    
+    // increase the dispatch group count everything index exceeds the work group size
+    if (index % keys_per_dispatch == 0) {
+        atomicAdd(&sort_dispatch.dispatch_x, 1u);
+    }
 }
