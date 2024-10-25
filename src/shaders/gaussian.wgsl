@@ -1,18 +1,3 @@
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) conic_matrix_0: vec3<f32>,
-    @location(1) conic_matrix_1: vec3<f32>,
-    @location(2) conic_matrix_2: vec3<f32>,
-    @location(3) color: vec4<f32>
-};
-
-struct Splat {
-    pos_ndc: vec3<f32>,
-    size_ndc: vec2<f32>,
-    conic_matrix: mat3x3<f32>,
-    color: vec4<f32>
-};
-
 struct CameraUniforms {
     view: mat4x4<f32>,
     view_inv: mat4x4<f32>,
@@ -22,7 +7,26 @@ struct CameraUniforms {
     focal: vec2<f32>
 };
 
+struct Splat {
+    pos_ndc: vec3<f32>,
+    size_ndc: vec2<f32>,
+    conic_matrix: mat3x3<f32>,
+    color: vec4<f32>
+};
+
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) conic_matrix_0: vec3<f32>,
+    @location(1) conic_matrix_1: vec3<f32>,
+    @location(2) conic_matrix_2: vec3<f32>,
+    @location(3) color: vec4<f32>
+};
+
 @group(0) @binding(0)
+var<uniform> camera: CameraUniforms;
+@group(0) @binding(1)
+var<storage, read> sort_indices : array<u32>;
+@group(0) @binding(2)
 var<storage, read> splats: array<Splat>;
 
 @vertex

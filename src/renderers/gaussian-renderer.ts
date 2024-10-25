@@ -80,57 +80,31 @@ export default function get_renderer(
   // ===============================================
   //    Create Render Pipeline and Bind Groups
   // ===============================================
-  
-  const camera_bind_group = device.createBindGroup({
-    label: 'point cloud camera',
-    layout: preprocess_pipeline.getBindGroupLayout(0),
-    entries: [
-      {binding: 0, resource: { buffer: camera_buffer }},
-      {binding: 1, resource: { buffer: settings_buffer}},
-    ],
-  });
-
-  const gaussian_bind_group = device.createBindGroup({
-    label: 'point cloud gaussians',
-    layout: preprocess_pipeline.getBindGroupLayout(1),
-    entries: [
-      {binding: 0, resource: { buffer: pc.gaussian_3d_buffer }},
-      {binding: 1, resource: { buffer: pc.sh_buffer }},
-    ],
-  });
-
-  const splat_bind_group = device.createBindGroup({
-    label: 'splats',
-    layout: preprocess_pipeline.getBindGroupLayout(3),
-    entries: [
-      { binding: 0, resource: { buffer: splat_buffer } },
-    ],
-  });
 
   const render_pipeline = device.createRenderPipeline({
-    label: 'render',
+    label: 'render pipeline',
+    layout: 'auto',
     vertex: {
-      module: device.createShaderModule({ code: renderWGSL }),
       entryPoint: 'vs_main',
+      module: device.createShaderModule({code: renderWGSL})
     },
     fragment: {
-      module: device.createShaderModule({ code: renderWGSL }),
       entryPoint: 'fs_main',
-      targets: [{ format: presentation_format }],
+      module: device.createShaderModule({code: renderWGSL}),
+      targets: [{
+        format: presentation_format,
+      }]
     },
-    primitive: {
-      topology: 'triangle-list',
-      cullMode: 'none',
-    },
-    layout: 'auto',
-  });
+});
 
-  const splat_bind_group_2 = device.createBindGroup({
-    label: 'splat data',
+  const render_bind_group = device.createBindGroup({
+    label: 'render bind group',
     layout: render_pipeline.getBindGroupLayout(0),
     entries: [
-      { binding: 0, resource: { buffer: splat_buffer } },
-    ],
+      { binding: 0, resource: { buffer: camera_buffer } },
+      { binding: 1, resource: { buffer: sorter.ping_pong[1].sort_indices_buffer } },
+      { binding: 2, resource: { buffer: splat_buffer } }
+    ]
   });
 
   // ===============================================
@@ -158,7 +132,7 @@ export default function get_renderer(
     });
 
     render_pass.setPipeline(render_pipeline);
-    render_pass.setBindGroup(0, splat_bind_group_2);
+    render_pass.setBindGroup(0, render_bind_group);
     render_pass.drawIndirect(splat_indirect_buffer, 0);
     render_pass.end();
   };
