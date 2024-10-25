@@ -243,9 +243,12 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let max_radius = length(scale) * 1.1;
     let size_ndc = vec2<f32>(max_radius, max_radius);
 
-    let color = computeColorFromSH(normalize(pos.xyz), idx, u32(settings.sh_deg));
-    let pos_opacity = unpack2x16float(gaussian.pos_opacity[0]);
-    let opacity = pos_opacity.y;
+    let cam_pos_world = camera.view_inv[3].xyz;
+    let rgb = computeColorFromSH(
+        normalize(mean.xyz - cam_pos_world),
+        idx, 
+        u32(settings.sh_deg)
+    );
 
     let key = atomicAdd(&sort_infos.keys_size, 1u);
     let z_far = camera.proj[3][2] / (1.0 - camera.proj[2][2]);
@@ -255,7 +258,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     splats[key].pos_ndc = pos_ndc.xyz;
     splats[key].size_ndc = size_ndc;
     splats[key].conic_matrix = covariance;
-    splats[key].color = vec4<f32>(color, opacity); 
+    splats[key].color = vec4<f32>(rgb, opacity); 
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
