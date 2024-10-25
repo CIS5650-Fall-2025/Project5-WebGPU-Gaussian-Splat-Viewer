@@ -81,7 +81,7 @@ export default async function init(
       invalidFiletypeMessage: "We can't accept those filetypes!"
     })
     .on('change', async (file) => {
-      const uploadedFile = file.value;
+      const uploadedFile = file.value as unknown as File;
       if (uploadedFile) {
         const pc = await load(uploadedFile, device);
         pointcloud_renderer = get_renderer_pointcloud(pc, device, presentation_format, camera.uniform_buffer);
@@ -105,9 +105,9 @@ export default async function init(
       invalidFiletypeMessage: "We can't accept those filetypes!"
     })
     .on('change', async (file) => {
-      const uploadedFile = file.value;
+      const uploadedFile = file.value as unknown as File;
       if (uploadedFile) {
-        cameras=await load_camera_presets(file.value);
+        cameras=await load_camera_presets(uploadedFile);
         camera.set_preset(cameras[0]);
         cam_file_loaded = true;
       }else{

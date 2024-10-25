@@ -26,7 +26,7 @@ export async function load(file: File, device: GPUDevice) {
     reader.readAsArrayBuffer(blob);
   });
 
-  const [vertexCount, propertyTypes, vertexData] = decodeHeader(arrayBuffer);
+  const [vertexCount, propertyTypes, vertexData] = decodeHeader(arrayBuffer as ArrayBuffer);
   // figure out the SH degree from the number of coefficients
   var nRestCoeffs = 0;
   for (const propertyName in propertyTypes) {
