@@ -43,19 +43,27 @@ fn vs_main(
     );
 
     out.position = vec4<f32>(vertex_pos_ndc, splat.pos_ndc.z, 1.0);
+
+    out.conic_matrix_0 = splat.conic_matrix[0];
+    out.conic_matrix_1 = splat.conic_matrix[1];
+    out.conic_matrix_2 = splat.conic_matrix[2];
+    out.color = splat.color;
+
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    var pos_ndc = 2.0 * (input.position.xy / camera.viewport) - vec2(1.0, 1.0);
+    pos_ndc.y = -pos_ndc.y;
+
     let conic_matrix = mat3x3<f32>(
         in.conic_matrix_0,
         in.conic_matrix_1,
         in.conic_matrix_2
     );
 
-    let screen_pos = in.position.xyz;
-    let distance_from_center = dot(screen_pos, conic_matrix * screen_pos);
+    let distance_from_center = dot(pos_ndc, conic_matrix * pos_ndc);
 
     if (distance_from_center > 1.0) {
         discard;
