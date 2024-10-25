@@ -59,10 +59,12 @@ struct Gaussian {
 };
 
 struct Splat {
-    pos_ndc: vec3<f32>,
-    size_ndc: vec2<f32>,
-    conic_matrix: mat3x3<f32>,
-    color: vec4<f32>,
+    mean_xy: u32,
+    radii: u32,
+    conic_xy: u32,
+    conic_z: u32,
+    rgb_rg: u32,
+    rgb_b_opacity: u32,
 };
 
 //TODO: bind your data here
@@ -205,19 +207,75 @@ fn quaternionToMatrix(q: vec4<f32>) -> mat3x3<f32> {
     );
 }
 
-fn computeCovarianceMatrix(rotation: vec4<f32>, scale: vec3<f32>, scaling_factor: f32) -> mat3x3<f32> {
-    let R = quaternionToMatrix(rotation);
-    let RT = transpose(R);
+// Based on original author's CUDA implementation.
+// github.com/graphdeco-inria/diff-gaussian-rasterization/blob/59f5f77e3ddbac3ed9db93ec2cfe99ed6c5d121d/cuda_rasterizer/forward.cu#L118
+fn computeCov3D(gaussian: Gaussian) -> array<f32, 6> {
+    var scale = vec3<f32>(unpack2x16float(gaussian.scale[0]).xy, unpack2x16float(gaussian.scale[1]).x);
+    scale = exp(scale);
+    let S = mat3x3f(
+        scale.x, 0.0f, 0.0f,
+        0.0f, scale.y, 0.0f,
+        0.0f, 0.0f, scale.z
+    ) * settings.gaussian_scaling;
 
-    let S = mat3x3<f32>(
-        vec3<f32>(scale.x, 0.0, 0.0),
-        vec3<f32>(0.0, scale.y, 0.0),
-        vec3<f32>(0.0, 0.0, scale.z)
-    ) * scaling_factor;
-    let ST = transpose(S);
+    let rot_ax = unpack2x16float(gaussian.rot[0]);
+    let rot_yz = unpack2x16float(gaussian.rot[1]);
+    let quaternion = vec4<f32>(rot_ax.y, rot_yz.x, rot_yz.y, rot_ax.x);
+    let R = quaternionToMatrix(quaternion);
 
-    let covariance = RT * ST * S * R;
-    return covariance;
+    let M = S * R;
+    
+    let Sigma = transpose(M) * M;
+
+    let cov3D = array<f32, 6>(
+        Sigma[0][0],
+        Sigma[0][1],
+        Sigma[0][2],
+        Sigma[1][1],
+        Sigma[1][2],
+        Sigma[2][2],
+    );
+
+    return cov3D;
+}
+
+// Based on original author's CUDA implementation.
+// github.com/graphdeco-inria/diff-gaussian-rasterization/blob/59f5f77e3ddbac3ed9db93ec2cfe99ed6c5d121d/cuda_rasterizer/forward.cu#L74
+fn computeCov2D(cov3D: array<f32, 6>, mean: vec4f) -> vec3f {
+    var t = (camera.view * mean).xyz;
+
+    let limx = 0.65f * camera.viewport.x / camera.focal.x;
+    let limy = 0.65f * camera.viewport.y / camera.focal.y;
+    let txtz = t.x / t.z;
+    let tytz = t.y / t.z;
+    t.x = min(limx, max(-limx, txtz)) * t.z;
+    t.y = min(limy, max(-limy, tytz)) * t.z;
+
+    let J = mat3x3f(
+        camera.focal.x / t.z, 0.0f,                 -(camera.focal.x * t.x) / (t.z * t.z),
+        0.0f,                 camera.focal.y / t.z, -(camera.focal.y * t.y) / (t.z * t.z),
+        0.0f,                 0.0f,                 0.0f
+    );
+
+    let W = mat3x3f(
+        camera.view[0].x, camera.view[1].x, camera.view[2].x,
+        camera.view[0].y, camera.view[1].y, camera.view[2].y,
+        camera.view[0].z, camera.view[1].z, camera.view[2].z
+    );
+
+    let T = W * J;
+
+    let Vrk = mat3x3f(
+        cov3D[0], cov3D[1], cov3D[2],
+        cov3D[1], cov3D[3], cov3D[4],
+        cov3D[2], cov3D[4], cov3D[5]
+    );
+
+    var cov2d = transpose(T) * transpose(Vrk) * T;
+    cov2d[0][0] += 0.3f;
+    cov2d[1][1] += 0.3f;
+
+    return vec3f(cov2d[0][0], cov2d[0][1], cov2d[1][1]);
 }
 
 @compute @workgroup_size(workgroupSize,1,1)
@@ -227,9 +285,9 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 
     let gaussian = gaussians[idx];
     
-    let pos_opacity_x_y = unpack2x16float(gaussian.pos_opacity[0]);
-    let pos_opacity_z_w = unpack2x16float(gaussian.pos_opacity[1]);
-    let mean = vec4f(pos_opacity_x_y.x, pos_opacity_x_y.y, pos_opacity_z_w.x, 1.0f);
+    let pos_xy = unpack2x16float(gaussian.pos_opacity[0]);
+    let pos_z_opacity = unpack2x16float(gaussian.pos_opacity[1]);
+    let mean = vec4f(pos_xy.x, pos_xy.y, pos_z_opacity.x, 1.0f);
     
     let mean_clip = camera.proj * camera.view * mean;
     let mean_screen = mean_clip.xy / mean_clip.w;
@@ -237,11 +295,24 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         return;
     }
 
-    let covariance = computeCovarianceMatrix(rotation, scale, settings.gaussian_scaling);
+    // Covariance, radii, and conic computation is based on the paper author's
+    // CUDA implementation.
+    // github.com/graphdeco-inria/diff-gaussian-rasterization/blob/main/cuda_rasterizer/forward.cu.
 
-    let pos_ndc = camera.proj * pos;
-    let max_radius = length(scale) * 1.1;
-    let size_ndc = vec2<f32>(max_radius, max_radius);
+    let cov = computeCov2D(computeCov3D(gaussian), mean);
+
+    var det = cov.x * cov.z - cov.y * cov.y;
+    if (det == 0.0) {
+        return;
+    }
+    let det_inv = 1.0 / det;
+
+    let conic = vec3f(cov.z*det_inv, -cov.y*det_inv, cov.x*det_inv);
+    
+    let mid = 0.5 * (cov.x + cov.z);
+    let lambda1 = mid + sqrt(max(0.1, mid*mid - det));
+    let lambda2 = mid - sqrt(max(0.1, mid*mid - det));
+    let radius = ceil(3.0 * sqrt(max(lambda1, lambda2)));
 
     let cam_pos_world = camera.view_inv[3].xyz;
     let rgb = computeColorFromSH(
@@ -255,10 +326,12 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     sort_depths[key] = bitcast<u32>(z_far - (camera.view * mean).z);
     sort_indices[key] = key;
 
-    splats[key].pos_ndc = pos_ndc.xyz;
-    splats[key].size_ndc = size_ndc;
-    splats[key].conic_matrix = covariance;
-    splats[key].color = vec4<f32>(rgb, opacity); 
+    splats[key].mean_xy = pack2x16float(mean_screen);
+    splats[key].radii = pack2x16float(vec2f(radius, radius) / camera.viewport);
+    splats[key].conic_xy = pack2x16float(conic.xy);
+    splats[key].conic_z = pack2x16float(vec2f(conic.z, 0.0));
+    splats[key].rgb_rg = pack2x16float(rgb.rg);
+    splats[key].rgb_b_opacity = pack2x16float(vec2f(rgb.b, pos_z_opacity.y));
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
