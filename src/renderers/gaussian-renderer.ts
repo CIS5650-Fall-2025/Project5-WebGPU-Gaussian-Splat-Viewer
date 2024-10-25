@@ -36,12 +36,18 @@ export default function get_renderer(
 
   const nulling_data = new Uint32Array([0]);
 
-  const splat_buffer_size = pc.num_points * (4 * 3 + 2 * 2 + 9 * 4);
-  const splat_buffer = createBuffer(device, 'Splat Buffer', splat_buffer_size, GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX);
+  const splat_buffer_size = pc.num_points * 8 * 3;
+  const splat_buffer = createBuffer(device, 'splat buffer', splat_buffer_size, GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX);
 
   const splat_indirect_buffer_size = 4 * 4;
-  const splat_indirect_buffer = createBuffer(device, 'Splat Indirect Buffer', splat_indirect_buffer_size, GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE);
+  const splat_indirect_buffer = createBuffer(device, 'splat indirect buffer', splat_indirect_buffer_size, GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE);
   device.queue.writeBuffer(splat_indirect_buffer, 0, new Uint32Array([4, 0, 0, 0]));
+
+  const settings_buffer = createBuffer(
+    device, 'settings buffer', 8,
+    GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    new Float32Array([1.0, pc.sh_deg,])
+  );
 
   // ===============================================
   //    Create Compute Pipeline and Bind Groups
@@ -80,6 +86,7 @@ export default function get_renderer(
     layout: preprocess_pipeline.getBindGroupLayout(0),
     entries: [
       {binding: 0, resource: { buffer: camera_buffer }},
+      {binding: 1, resource: { buffer: settings_buffer}},
     ],
   });
 
@@ -163,6 +170,7 @@ export default function get_renderer(
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
       preprocess(encoder);
       sorter.sort(encoder);
+      encoder.copyBufferToBuffer(sorter.sort_info_buffer, 0, splat_indirect_buffer, 4, 4);
       render(encoder, texture_view);
     },
     camera_buffer,

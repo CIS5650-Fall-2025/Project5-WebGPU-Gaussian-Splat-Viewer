@@ -75,10 +75,18 @@ var<storage, read_write> sort_indices : array<u32>;
 @group(2) @binding(3)
 var<storage, read_write> sort_dispatch: DispatchIndirect;
 
+@group(0) @binding(0)
+var<uniform> camera: CameraUniforms;
+@group(0) @binding(1)
+var<uniform> settings: RenderSettings;
+
 @group(1) @binding(0)
 var<storage,read> gaussians : array<Gaussian>;
 @group(1) @binding(1) 
 var<storage,read> sh_coefs : array<array<u32,24>>;
+
+@group(3) @binding(0)
+var<storage, read_write> splats: array<Splat>;
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
@@ -242,13 +250,13 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         return;
     }
 
-    let covariance = computeCovarianceMatrix(rotation, scale, 1.0);
+    let covariance = computeCovarianceMatrix(rotation, scale, settings.gaussian_scaling);
 
     let pos_ndc = camera.proj * pos;
     let max_radius = length(scale) * 1.1;
     let size_ndc = vec2<f32>(max_radius, max_radius);
 
-    let color = computeColorFromSH(normalize(pos.xyz), idx, 1u);
+    let color = computeColorFromSH(normalize(pos.xyz), idx, u32(settings.sh_deg));
     let pos_opacity = unpack2x16float(gaussian.pos_opacity[0]);
     let opacity = pos_opacity.y;
 
