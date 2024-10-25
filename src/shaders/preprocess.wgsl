@@ -123,34 +123,57 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
     return  max(vec3<f32>(0.), result);
 }
 
-fn frustumCull(pos: vec4<f32>, scale: vec3<f32>, camera: CameraUniforms) -> bool {
-    let pos_in_view_space = (camera.view * pos).xyz;
+// Normalize so that the normal is a unit vector.
+fn normalizePlane(plane: vec4<f32>) -> vec4<f32> {
+    let length = length(plane.xyz);
+    return plane / length;
+}
 
+// Gribb-Hartmann. www.gamedevs.org/uploads/fast-extraction-viewing-frustum-planes-from-world-view-projection-matrix.pdf.
+fn extractFrustumPlanes(view_proj: mat4x4<f32>) -> array<vec4<f32>, 6> {
+    var planes: array<vec4<f32>, 6>;
+
+    // Left.
+    planes[0] = normalizePlane(view_proj[3] + view_proj[0]);
+    // Right.
+    planes[1] = normalizePlane(view_proj[3] - view_proj[0]);
+    // Bottom.
+    planes[2] = normalizePlane(view_proj[3] + view_proj[1]);
+    // Top.
+    planes[3] = normalizePlane(view_proj[3] - view_proj[1]);
+    // Near.
+    planes[4] = normalizePlane(view_proj[3] + view_proj[2]);
+    // Far.
+    planes[5] = normalizePlane(view_proj[3] - view_proj[2]);
+
+    // In clip space.
+    return planes;
+}
+
+fn frustumCull(pos: vec4<f32>, scale: vec3<f32>, view_proj: mat4x4<f32>) -> bool {
     var enlarged_scale = abs(scale) * 1.1;
-    let min_bounds = pos_in_view_space - enlarged_scale;
-    let max_bounds = pos_in_view_space + enlarged_scale;
+    let pos_in_view_space = (camera.view * pos).xyz;
+    let min_bounds = pos_in_view_space.xyz - enlarged_scale;
+    let max_bounds = pos_in_view_space.xyz + enlarged_scale;
 
-    let near_plane = 0.01;
-    let far_plane = 100.0;
+    let min_clip = view_proj * vec4<f32>(min_bounds, 1.0);
+    let max_clip = view_proj * vec4<f32>(max_bounds, 1.0);
 
-    if (max_bounds.z < near_plane || min_bounds.z > far_plane) {
-        // Before or beyond near/far planes.
-        return false;
-    }
+    let frustum_planes = extractFrustumPlanes(view_proj);
 
-    // Isosceles triangle up to aabb min z.
-    let left_plane = min_bounds.z * -1.0;
-    // Isosceles triangle up to aabb max z.
-    let right_plane = max_bounds.z * 1.0;
-    if (max_bounds.x < left_plane || min_bounds.x > right_plane) {
-        return false;
-    }
+    for (var i = 0u; i < 6u; i = i + 1u) {
+        let plane = frustum_planes[i];
 
-    // Similarly.
-    let bottom_plane = min_bounds.z * -1.0;
-    let top_plane = max_bounds.z * 1.0;
-    if (max_bounds.y < bottom_plane || min_bounds.y > top_plane) {
-        return false;
+        let p = vec3<f32>(
+            select(min_clip.x, max_clip.x, plane.x > 0.0),
+            select(min_clip.y, max_clip.y, plane.y > 0.0),
+            select(min_clip.z, max_clip.z, plane.z > 0.0)
+        );
+
+        if (dot(plane.xyz, p) + plane.w < 0.0) {
+            // Cull.
+            return false;
+        }
     }
 
     return true;
