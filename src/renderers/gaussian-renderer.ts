@@ -36,33 +36,97 @@ export default function get_renderer(
 
   const nulling_data = new Uint32Array([0]);
 
+  const splatBuffer = createBuffer(
+    device,
+    'splat buffer',
+    4 * 4,
+    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+  );
+
   // ===============================================
   //    Create Compute Pipeline and Bind Groups
   // ===============================================
-  // const preprocess_pipeline = device.createComputePipeline({
-  //   label: 'preprocess',
-  //   layout: 'auto',
-  //   compute: {
-  //     module: device.createShaderModule({ code: preprocessWGSL }),
-  //     entryPoint: 'preprocess',
-  //     constants: {
-  //       workgroupSize: C.histogram_wg_size,
-  //       sortKeyPerThread: c_histogram_block_rows,
-  //     },
-  //   },
-  // });
+  const preprocess_sort_bind_group_layout = device.createBindGroupLayout({
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+    ],
+  });
 
-  // const sort_bind_group = device.createBindGroup({
-  //   label: 'sort',
-  //   layout: preprocess_pipeline.getBindGroupLayout(2),
-  //   entries: [
-  //     { binding: 0, resource: { buffer: sorter.sort_info_buffer } },
-  //     { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_depths_buffer } },
-  //     { binding: 2, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
-  //     { binding: 3, resource: { buffer: sorter.sort_dispatch_indirect_buffer } },
-  //   ],
-  // });
+  const preprocess_scene_bind_group_layout = device.createBindGroupLayout({
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+    ]
+  });
 
+  const preprocess_gaussian_bind_group_layout = device.createBindGroupLayout({
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+    ],
+  });
+
+  const preprocess_splats_bind_group_layout = device.createBindGroupLayout({
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+    ],
+  });
+
+  const preprocess_pipeline = device.createComputePipeline({
+    label: 'preprocess',
+    layout: device.createPipelineLayout({
+      bindGroupLayouts: [
+        preprocess_sort_bind_group_layout,
+        preprocess_scene_bind_group_layout,
+        preprocess_gaussian_bind_group_layout,
+        preprocess_splats_bind_group_layout,
+      ],
+    }),
+    compute: {
+      module: device.createShaderModule({ code: preprocessWGSL }),
+      entryPoint: 'preprocess',
+      constants: {
+        workgroupSize: C.histogram_wg_size,
+        sortKeyPerThread: c_histogram_block_rows,
+      },
+    },
+  });
+
+  const sort_bind_group = device.createBindGroup({
+    label: 'sort',
+    layout: preprocess_sort_bind_group_layout,
+    entries: [
+      { binding: 0, resource: { buffer: sorter.sort_info_buffer } },
+      { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_depths_buffer } },
+      { binding: 2, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
+      { binding: 3, resource: { buffer: sorter.sort_dispatch_indirect_buffer } },
+    ],
+  });
+
+  const preprocess_scene_bind_group = device.createBindGroup({
+    label: 'scene',
+    layout: preprocess_scene_bind_group_layout,
+    entries: [
+      { binding: 0, resource: { buffer: camera_buffer } },
+    ],
+  });
+
+  const preprocess_gaussian_bind_group = device.createBindGroup({
+    label: 'gaussian',
+    layout: preprocess_gaussian_bind_group_layout,
+    entries: [
+      { binding: 0, resource: { buffer: pc.gaussian_3d_buffer } },
+    ],
+  });
+
+  const preprocess_splats_bind_group = device.createBindGroup({
+    label: 'splats',
+    layout: preprocess_splats_bind_group_layout,
+    entries: [
+      { binding: 0, resource: { buffer: splatBuffer } },
+    ],
+  });
 
   // ===============================================
   //    Create Render Pipeline and Bind Groups
@@ -128,6 +192,18 @@ export default function get_renderer(
   // ===============================================
   //    Command Encoder Functions
   // ===============================================
+
+  const preprocess = (encoder: GPUCommandEncoder) => {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(preprocess_pipeline);
+    pass.setBindGroup(0, sort_bind_group);
+    pass.setBindGroup(1, preprocess_scene_bind_group);
+    pass.setBindGroup(2, preprocess_gaussian_bind_group);
+    pass.setBindGroup(3, preprocess_splats_bind_group);
+    pass.dispatchWorkgroups(C.histogram_wg_size, 1, 1);
+    pass.end();
+  }
+
   const render = (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
     const pass = encoder.beginRenderPass({
       label: "render gaussian pass",
@@ -145,13 +221,13 @@ export default function get_renderer(
     pass.end();
   }
 
-
   // ===============================================
   //    Return Render Object
   // ===============================================
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
-      // sorter.sort(encoder);
+      sorter.sort(encoder);
+      preprocess(encoder);
       render(encoder, texture_view);
     },
     camera_buffer,

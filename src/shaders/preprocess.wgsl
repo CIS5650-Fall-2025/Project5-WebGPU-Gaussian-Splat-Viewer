@@ -56,18 +56,26 @@ struct Gaussian {
 };
 
 struct Splat {
-    //TODO: store information for 2D splat rendering
+    pos: vec3<f32>,
 };
 
-//TODO: bind your data here
-@group(2) @binding(0)
+@group(0) @binding(0)
 var<storage, read_write> sort_infos: SortInfos;
-@group(2) @binding(1)
+@group(0) @binding(1)
 var<storage, read_write> sort_depths : array<u32>;
-@group(2) @binding(2)
+@group(0) @binding(2)
 var<storage, read_write> sort_indices : array<u32>;
-@group(2) @binding(3)
+@group(0) @binding(3)
 var<storage, read_write> sort_dispatch: DispatchIndirect;
+
+@group(1) @binding(0)
+var<uniform> camera: CameraUniforms;
+
+@group(2) @binding(0)
+var<storage, read> gaussians: array<Gaussian>;
+
+@group(3) @binding(0)
+var<storage, read_write> splats: array<Splat>;
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
@@ -111,7 +119,21 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
 @compute @workgroup_size(workgroupSize,1,1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
-    //TODO: set up pipeline as described in instruction
+    if (idx >= arrayLength(&gaussians)) {
+        return;
+    }
+
+    let gaussian = gaussians[idx];
+    let posXY = unpack2x16float(gaussian.pos_opacity[0]);
+    let posZAndOpacity = unpack2x16float(gaussian.pos_opacity[1]);
+    let pos = vec3<f32>(posXY, posZAndOpacity.x);
+    let opacity = posZAndOpacity.y;
+
+    // Transform from world space to NDC space
+    var posNDC = (camera.proj * camera.view * vec4<f32>(pos, 1.0));
+    posNDC /= posNDC.w;
+
+    // splats[idx].pos = pos;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys

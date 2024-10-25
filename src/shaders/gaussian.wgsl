@@ -3,9 +3,9 @@ struct VertexOutput {
     //TODO: information passed from vertex shader to fragment shader
 };
 
-// struct Splat {
-//     //TODO: information defined in preprocess compute shader
-// };
+struct Splat {
+    pos: vec3<f32>
+};
 
 @vertex
 fn vs_main(
