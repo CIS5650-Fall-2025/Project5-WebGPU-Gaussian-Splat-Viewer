@@ -199,9 +199,9 @@ fn quaternionToMatrix(q: vec4<f32>) -> mat3x3<f32> {
     let wz = q.w * q.z;
 
     return mat3x3<f32>(
-        1.0 - 2.0 * (y2 + z2), 2.0 * (xy - wz),      2.0 * (xz + wy),
-        2.0 * (xy + wz),      1.0 - 2.0 * (x2 + z2), 2.0 * (yz - wx),
-        2.0 * (xz - wy),      2.0 * (yz + wx),       1.0 - 2.0 * (x2 + y2)
+        1.0 - 2.0 * (y2 + z2), 2.0 * (xy - wz),       2.0 * (xz + wy),
+        2.0 * (xy + wz),       1.0 - 2.0 * (x2 + z2), 2.0 * (yz - wx),
+        2.0 * (xz - wy),       2.0 * (yz + wx),       1.0 - 2.0 * (x2 + y2)
     );
 }
 
@@ -216,7 +216,7 @@ fn computeCovarianceMatrix(rotation: vec4<f32>, scale: vec3<f32>, scaling_factor
     ) * scaling_factor;
     let ST = transpose(S);
 
-    let covariance = R * S * ST * RT;
+    let covariance = RT * ST * S * R;
     return covariance;
 }
 
@@ -225,28 +225,15 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let idx = gid.x;
     //TODO: set up pipeline as described in instruction
 
-    // let focal = camera.focal;
-
-    // let gaussian = gaussians[idx];
-
-    // let padded_size = sort_infos.padded_size;
-    // let sort_depth = sort_depths[0];
-    // let sort_indices = sort_indices[0];
-    // let dispatch_y = sort_dispatch.dispatch_y;
-
     let gaussian = gaussians[idx];
     
-    let pos = vec4<f32>(unpack2x16float(gaussian.pos_opacity[0]).xy, unpack2x16float(gaussian.pos_opacity[1]).x, 1.0);
-    let scale = vec3<f32>(unpack2x16float(gaussian.scale[0]).xy, unpack2x16float(gaussian.scale[1]).x);
-
-    // Quaternion.
-    let rot_xy = unpack2x16float(gaussian.rot[0]);
-    let rot_zw = unpack2x16float(gaussian.rot[1]);
-    let rotation = vec4<f32>(rot_xy.x, rot_xy.y, rot_zw.x, rot_zw.y);
-
-    let view_proj = camera.proj * camera.view;
-
-    if (!frustumCull(pos, scale, view_proj)) {
+    let pos_opacity_x_y = unpack2x16float(gaussian.pos_opacity[0]);
+    let pos_opacity_z_w = unpack2x16float(gaussian.pos_opacity[1]);
+    let mean = vec4f(pos_opacity_x_y.x, pos_opacity_x_y.y, pos_opacity_z_w.x, 1.0f);
+    
+    let mean_clip = camera.proj * camera.view * mean;
+    let mean_screen = mean_clip.xy / mean_clip.w;
+    if (frustumCull(mean_clip)) {
         return;
     }
 
@@ -260,20 +247,19 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let pos_opacity = unpack2x16float(gaussian.pos_opacity[0]);
     let opacity = pos_opacity.y;
 
-    atomicAdd(&sort_infos.keys_size, 1u);
-    sort_depths[idx] = u32(pos_ndc.z * 1000.0);
-    sort_indices[idx] = idx;
+    let key = atomicAdd(&sort_infos.keys_size, 1u);
+    let z_far = camera.proj[3][2] / (1.0 - camera.proj[2][2]);
+    sort_depths[key] = bitcast<u32>(z_far - (camera.view * mean).z);
+    sort_indices[key] = key;
 
-    splats[idx].pos_ndc = pos_ndc.xyz;
-    splats[idx].size_ndc = size_ndc;
-    splats[idx].conic_matrix = covariance;
-    splats[idx].color = vec4<f32>(color, opacity); 
+    splats[key].pos_ndc = pos_ndc.xyz;
+    splats[key].size_ndc = size_ndc;
+    splats[key].conic_matrix = covariance;
+    splats[key].color = vec4<f32>(color, opacity); 
 
-    // Dispatch handling logic
-    let keys_per_dispatch = workgroupSize * sortKeyPerThread;
+    let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
-
-    if (idx % keys_per_dispatch == 0u) {
+    if (key % keys_per_dispatch == 0) {
         atomicAdd(&sort_dispatch.dispatch_x, 1u);
     }
 }
