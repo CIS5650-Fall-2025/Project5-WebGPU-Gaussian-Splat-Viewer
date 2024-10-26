@@ -133,7 +133,8 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let opacity = posZAndOpacity.y;
 
     // Transform from world space to NDC space
-    var posNDC = (camera.proj * camera.view * vec4<f32>(pos, 1.0));
+    let viewPos = (camera.view * vec4<f32>(pos, 1.0)).xyz;
+    var posNDC = (camera.proj * vec4<f32>(viewPos, 1.0));
     posNDC /= posNDC.w;
 
     // View-frustum culling of splats (treat frustum as 1.2x actual size to avoid culling edge splats)
@@ -145,6 +146,10 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 
     let sortKeysIndex = atomicAdd(&sort_infos.keys_size, 1);
     splats[sortKeysIndex].pos = posNDC.xy;
+
+    // View space depth is negative. We negate it for correct sorting order.
+    sort_depths[sortKeysIndex] = bitcast<u32>(-viewPos.z); // Bitcast because the radix sort operates on u32s
+    sort_indices[sortKeysIndex] = sortKeysIndex;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys

@@ -18,7 +18,7 @@ fn vs_main(
     var out: VertexOutput;
 
     let splatIdx = sort_indices[instanceIdx];
-    let splat = splats[instanceIdx];
+    let splat = splats[splatIdx];
  
     // Draw splat as a quad (each vertex is the splat position + width/height offset)
     // Works because splat position was projected to NDC space in the preprocess step.    
