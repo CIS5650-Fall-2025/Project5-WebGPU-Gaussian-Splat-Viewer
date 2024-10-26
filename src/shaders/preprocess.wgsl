@@ -56,7 +56,7 @@ struct Gaussian {
 };
 
 struct Splat {
-    pos: vec3<f32>,
+    pos: vec2<f32>,
 };
 
 @group(0) @binding(0)
@@ -133,7 +133,14 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     var posNDC = (camera.proj * camera.view * vec4<f32>(pos, 1.0));
     posNDC /= posNDC.w;
 
-    // splats[idx].pos = pos;
+    // View-frustum culling of splats (treat frustum as 1.2x actual size to avoid culling edge splats)
+    if (posNDC.x < -1.2 || posNDC.x > 1.2 || 
+        posNDC.y < -1.2 || posNDC.y > 1.2 || 
+        posNDC.z < 0.0 || posNDC.z > 1.0) {
+        return;
+    }
+
+    splats[idx].pos = posNDC.xy;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys

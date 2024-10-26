@@ -39,8 +39,8 @@ export default function get_renderer(
   const splatBuffer = createBuffer(
     device,
     'splat buffer',
-    4 * 4,
-    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+    pc.num_points * (4 * 4),
+    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   );
 
   // ===============================================
@@ -136,19 +136,7 @@ export default function get_renderer(
     layout: 'auto',
     vertex: {
       module: device.createShaderModule({ code: renderWGSL }),
-      entryPoint: 'vs_main',
-      buffers: [
-        {
-          arrayStride: 3 * 4,
-          attributes: [
-            {
-              shaderLocation: 0,
-              offset: 0,
-              format: 'float32x3',
-            },
-          ],
-        },
-      ],
+      entryPoint: 'vs_main'
     },
     fragment: {
       module: device.createShaderModule({ code: renderWGSL }),
@@ -160,17 +148,17 @@ export default function get_renderer(
     },
   });
 
-  // For testing, set up an indirect draw buffer
-  const vertices = new Float32Array([
-    // x, y, z
-    -0.5, -0.5, 0.0,
-     0.5, -0.5, 0.0,
-     0.0,  0.5, 0.0
-  ]);
-
+  const render_bind_group = device.createBindGroup({
+    layout: render_pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: splatBuffer } },
+      { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } }
+    ],
+  });
 
   const indirect_draw_data = new Uint32Array([
-    3, 1, 0, 0 // vertexCount, instanceCount, firstVertex, firstInstance
+    // Draw pc.num_points instances of a quad
+    6, pc.num_points, 0, 0 // vertexCount, instanceCount, firstVertex, firstInstance
   ]);
 
   const indirect_draw_buffer = createBuffer(
@@ -179,14 +167,6 @@ export default function get_renderer(
     4 * 4,
     GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
     indirect_draw_data
-  );
-
-  const vertex_buffer = createBuffer(
-    device,
-    'vertex buffer',
-    vertices.byteLength,
-    GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    vertices
   );
 
   // ===============================================
@@ -200,7 +180,7 @@ export default function get_renderer(
     pass.setBindGroup(1, preprocess_scene_bind_group);
     pass.setBindGroup(2, preprocess_gaussian_bind_group);
     pass.setBindGroup(3, preprocess_splats_bind_group);
-    pass.dispatchWorkgroups(C.histogram_wg_size, 1, 1);
+    pass.dispatchWorkgroups(Math.ceil(pc.num_points / C.histogram_wg_size), 1, 1);
     pass.end();
   }
 
@@ -216,7 +196,7 @@ export default function get_renderer(
       ],
     });
     pass.setPipeline(render_pipeline);
-    pass.setVertexBuffer(0, vertex_buffer);
+    pass.setBindGroup(0, render_bind_group);
     pass.drawIndirect(indirect_draw_buffer, 0);
     pass.end();
   }
@@ -226,8 +206,8 @@ export default function get_renderer(
   // ===============================================
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
-      sorter.sort(encoder);
       preprocess(encoder);
+      sorter.sort(encoder);
       render(encoder, texture_view);
     },
     camera_buffer,
