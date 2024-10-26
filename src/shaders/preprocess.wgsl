@@ -77,6 +77,9 @@ var<storage, read> gaussians: array<Gaussian>;
 @group(3) @binding(0)
 var<storage, read_write> splats: array<Splat>;
 
+@group(3) @binding(1)
+var<uniform> render_settings: RenderSettings;
+
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
     //TODO: access your binded sh_coeff, see load.ts for how it is stored
@@ -140,7 +143,8 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         return;
     }
 
-    splats[idx].pos = posNDC.xy;
+    let sortKeysIndex = atomicAdd(&sort_infos.keys_size, 1);
+    splats[sortKeysIndex].pos = posNDC.xy;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys

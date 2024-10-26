@@ -19,7 +19,7 @@ fn vs_main(
 
     let splatIdx = sort_indices[instanceIdx];
     let splat = splats[instanceIdx];
-
+ 
     // Draw splat as a quad (each vertex is the splat position + width/height offset)
     // Works because splat position was projected to NDC space in the preprocess step.    
     let quadVerts = array<vec2f, 6>(
@@ -29,8 +29,6 @@ fn vs_main(
         vec2f(splat.pos.x + 0.01, splat.pos.y - 0.01),
         vec2f(splat.pos.x + 0.01, splat.pos.y + 0.01),
         vec2f(splat.pos.x - 0.01, splat.pos.y + 0.01)
-    let viewSpacePos = (camera.view * vec4<f32>(pos, 1.0)).xyz;
-    let viewSpacePos = (camera.view * vec4<f32>(pos, 1.0)).xyz;
     );
 
     out.position = vec4f(quadVerts[vertIdx], 0.0, 1.0);

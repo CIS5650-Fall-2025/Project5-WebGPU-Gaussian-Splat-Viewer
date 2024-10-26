@@ -5,7 +5,7 @@ import { get_sorter,c_histogram_block_rows,C } from '../sort/sort';
 import { Renderer } from './renderer';
 
 export interface GaussianRenderer extends Renderer {
-
+  render_settings_buffer: GPUBuffer,
 }
 
 // Utility to create GPU buffers
@@ -35,12 +35,27 @@ export default function get_renderer(
   // ===============================================
 
   const nulling_data = new Uint32Array([0]);
+  const null_buffer = createBuffer(
+    device,
+    'null buffer',
+    4,
+    GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+    nulling_data
+  );
 
   const splatBuffer = createBuffer(
     device,
     'splat buffer',
     pc.num_points * (4 * 4),
     GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  );
+
+  const render_settings_buffer = createBuffer(
+    device,
+    'render settings buffer',
+    4 * 2, // Gaussian multiplier and spherical harmonic degree
+    GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    new Float32Array([1.0, pc.sh_deg])
   );
 
   // ===============================================
@@ -70,6 +85,7 @@ export default function get_renderer(
   const preprocess_splats_bind_group_layout = device.createBindGroupLayout({
     entries: [
       { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
     ],
   });
 
@@ -125,6 +141,7 @@ export default function get_renderer(
     layout: preprocess_splats_bind_group_layout,
     entries: [
       { binding: 0, resource: { buffer: splatBuffer } },
+      { binding: 1, resource: { buffer: render_settings_buffer } },
     ],
   });
 
@@ -157,8 +174,8 @@ export default function get_renderer(
   });
 
   const indirect_draw_data = new Uint32Array([
-    // Draw pc.num_points instances of a quad
-    6, pc.num_points, 0, 0 // vertexCount, instanceCount, firstVertex, firstInstance
+    // Initialize to 0 instance. The actual instance count is determined by the preprocess step.
+    6, 0, 0, 0 // vertexCount, instanceCount, firstVertex, firstInstance
   ]);
 
   const indirect_draw_buffer = createBuffer(
@@ -206,10 +223,23 @@ export default function get_renderer(
   // ===============================================
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
+      // Reset the keysize on sort_info_buffer
+      encoder.copyBufferToBuffer(null_buffer, 0, sorter.sort_info_buffer, 0, 4);
+
       preprocess(encoder);
+      
+      // Copy the instance count to the indirect draw buffer
+      encoder.copyBufferToBuffer(
+        sorter.sort_info_buffer, 0,
+        indirect_draw_buffer, 4,
+        4
+      );
+
       sorter.sort(encoder);
+
       render(encoder, texture_view);
     },
     camera_buffer,
+    render_settings_buffer,
   };
 }
