@@ -223,8 +223,9 @@ export default function get_renderer(
   // ===============================================
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
-      // Reset the keysize on sort_info_buffer
+      // Reset the keysize on sort_info_buffer and the dispatch size on the indirect draw buffer
       encoder.copyBufferToBuffer(null_buffer, 0, sorter.sort_info_buffer, 0, 4);
+      encoder.copyBufferToBuffer(null_buffer, 0, sorter.sort_dispatch_indirect_buffer, 0, 4);
 
       preprocess(encoder);
       
