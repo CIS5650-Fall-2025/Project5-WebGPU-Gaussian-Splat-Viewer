@@ -4,6 +4,8 @@ import renderWGSL from '../shaders/gaussian.wgsl';
 import { get_sorter,c_histogram_block_rows,C } from '../sort/sort';
 import { Renderer } from './renderer';
 
+const c_size_splat = 4 * 2 * 3;
+
 export interface GaussianRenderer extends Renderer {
 
 }
@@ -36,18 +38,18 @@ export default function get_renderer(
 
   const nulling_data = new Uint32Array([0]);
 
-  const splat_buffer_size = pc.num_points * 8 * 3;
-  const splat_buffer = createBuffer(device, 'splat buffer', splat_buffer_size, GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX);
+	const splat_buffer = createBuffer(
+		device, 'splat buffer', pc.num_points*c_size_splat, GPUBufferUsage.STORAGE
+	);
 
   const splat_indirect_buffer_size = 4 * 4;
   const splat_indirect_buffer = createBuffer(device, 'splat indirect buffer', splat_indirect_buffer_size, GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE);
   device.queue.writeBuffer(splat_indirect_buffer, 0, new Uint32Array([4, 0, 0, 0]));
 
-  const settings_buffer = createBuffer(
-    device, 'settings buffer', 8,
-    GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    new Float32Array([1.0, pc.sh_deg,])
-  );
+	const settings_buffer = createBuffer(
+		device, 'settings buffer', 8, GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM, 
+		new Float32Array([1.0, pc.sh_deg])
+	);
 
   // ===============================================
   //    Create Compute Pipeline and Bind Groups
@@ -78,8 +80,8 @@ export default function get_renderer(
   });
 
   const sort_bind_group = device.createBindGroup({
-    label: 'sort',
-    layout: preprocess_pipeline.getBindGroupLayout(2),
+    label: 'sort bind group',
+    layout: preprocess_pipeline.getBindGroupLayout(1),
     entries: [
       { binding: 0, resource: { buffer: sorter.sort_info_buffer } },
       { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_depths_buffer } },
