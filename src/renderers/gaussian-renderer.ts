@@ -37,6 +37,9 @@ export default function get_renderer(
   // ===============================================
 
   const nulling_data = new Uint32Array([0]);
+  const reset_buffer = createBuffer(
+		device, 'reset buffer', 4, GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, nulling_data
+	);
 
 	const splat_buffer = createBuffer(
 		device, 'splat buffer', pc.num_points*c_size_splat, GPUBufferUsage.STORAGE
@@ -127,6 +130,9 @@ export default function get_renderer(
   // ===============================================
 
   const preprocess = (encoder: GPUCommandEncoder) => {
+    encoder.copyBufferToBuffer(reset_buffer, 0, sorter.sort_info_buffer, 0, 4);
+		encoder.copyBufferToBuffer(reset_buffer, 0, sorter.sort_dispatch_indirect_buffer, 0, 4);
+
 		const pass = encoder.beginComputePass({ label: 'preprocess pass' });
 		pass.setPipeline(preprocess_pipeline);
 		pass.setBindGroup(0, preprocess_bind_group);
