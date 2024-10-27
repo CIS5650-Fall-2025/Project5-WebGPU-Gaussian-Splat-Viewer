@@ -67,7 +67,27 @@ export default function get_renderer(
   // ===============================================
   //    Create Render Pipeline and Bind Groups
   // ===============================================
-  
+  const buffer = createBuffer(
+    device, //device
+    "Buffer", //label
+    16, //size
+    GPUBufferUsage.COPY_DST | GPUBufferUsage.INDIRECT, // Usage
+    new Uint32Array([6, pc.num_points, 0, 0, ]) // Data
+  )
+  const render_shader = device.createShaderModule({code: renderWGSL});
+  const render_pipeline = device.createRenderPipeline({
+    label: 'render',
+    layout: 'auto',
+    vertex: {
+      module: render_shader,
+      entryPoint: 'vs_main',
+    },
+    fragment: {
+      module: render_shader,
+      entryPoint: 'fs_main',
+      targets: [{ format: presentation_format }],
+    },
+  });
 
   // ===============================================
   //    Command Encoder Functions
@@ -80,6 +100,19 @@ export default function get_renderer(
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
       sorter.sort(encoder);
+      const pass = encoder.beginRenderPass({
+        label: 'Render pass',
+        colorAttachments: [
+          {
+            view: texture_view,
+            loadOp: 'clear',
+            storeOp: 'store',
+            clearValue: [ 0.0, 0.0, 0.0, 1.0],
+          }
+        ],
+      });
+      pass.setPipeline(render_pipeline);
+      pass.drawIndirect(buffer, 0);
     },
     camera_buffer,
   };
