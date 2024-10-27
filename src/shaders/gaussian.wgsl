@@ -16,20 +16,18 @@ struct Splat {
     rgb_b_opacity: u32
 };
 
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) conic_matrix_0: vec3<f32>,
-    @location(1) conic_matrix_1: vec3<f32>,
-    @location(2) conic_matrix_2: vec3<f32>,
-    @location(3) color: vec4<f32>
-};
-
 @group(0) @binding(0)
 var<uniform> camera: CameraUniforms;
 @group(0) @binding(1)
 var<storage, read> sort_indices : array<u32>;
 @group(0) @binding(2)
 var<storage, read> splats: array<Splat>;
+
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(1) rgb_opacity: vec4f,
+    @location(2) conic: vec3f
+};
 
 @vertex
 fn vs_main(
@@ -56,23 +54,14 @@ fn vs_main(
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     var pos_ndc = 2.0 * (input.position.xy / camera.viewport) - vec2(1.0, 1.0);
     pos_ndc.y = -pos_ndc.y;
 
-    let conic_matrix = mat3x3<f32>(
-        in.conic_matrix_0,
-        in.conic_matrix_1,
-        in.conic_matrix_2
-    );
+    var exponent = 
+        input.conic.x * pos_ndc.x * pos_ndc.x
+        + input.conic.z * pos_ndc.y * pos_ndc.y
+        + input.conic.y * pos_ndc.x * pos_ndc.y;
 
-    let distance_from_center = dot(pos_ndc, conic_matrix * pos_ndc);
-
-    if (distance_from_center > 1.0) {
-        discard;
-    }
-
-    let decay = exp(-distance_from_center);
-
-    return vec4<f32>(in.color.rgb, in.color.a * decay);
+    return vec4<f32>(in.color.rgb, in.color.a) * exp(-exponent/2.0);
 }
