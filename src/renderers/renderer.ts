@@ -46,7 +46,7 @@ export default async function init(
 
   // Tweakpane: easily adding tweak control for parameters.
   const params = {
-    fps: 0.0,
+    dt: 0.0,
     gaussian_multiplier: 1,
     renderer: 'pointcloud',
     ply_file: '',
@@ -59,8 +59,9 @@ export default async function init(
   });
   pane.registerPlugin(TweakpaneFileImportPlugin);
   {
-    pane.addMonitor(params, 'fps', {
-      readonly:true
+    pane.addMonitor(params, 'dt', {
+      readonly:true,
+      label: 'dt (ms)'
     });
   }
   {
@@ -146,7 +147,7 @@ export default async function init(
 
   function frame() {
     if (ply_file_loaded && cam_file_loaded) {
-      params.fps=1.0/timeReturn()*1000.0;
+      params.dt = timeReturn();
       time();
       const encoder = device.createCommandEncoder();
       const texture_view = context.getCurrentTexture().createView();
