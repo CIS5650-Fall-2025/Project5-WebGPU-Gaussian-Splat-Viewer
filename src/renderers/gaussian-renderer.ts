@@ -42,9 +42,10 @@ export default function get_renderer(
 		device, 'splat buffer', pc.num_points*c_size_splat, GPUBufferUsage.STORAGE
 	);
 
-  const splat_indirect_buffer_size = 4 * 4;
-  const splat_indirect_buffer = createBuffer(device, 'splat indirect buffer', splat_indirect_buffer_size, GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE);
-  device.queue.writeBuffer(splat_indirect_buffer, 0, new Uint32Array([4, 0, 0, 0]));
+  const indirect_render_buffer = createBuffer(
+		device, 'indirect buffer', 16, GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
+		new Uint32Array([6, 0, 0, 0])
+	);
 
 	const settings_buffer = createBuffer(
 		device, 'settings buffer', 8, GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM, 
@@ -135,19 +136,21 @@ export default function get_renderer(
   };
 
   const render = (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
-    const render_pass = encoder.beginRenderPass({
+    encoder.copyBufferToBuffer(sorter.sort_info_buffer, 0, indirect_render_buffer, 4, 4);
+
+    const pass = encoder.beginRenderPass({
       colorAttachments: [{
         view: texture_view,
         loadOp: 'clear',
         clearValue: { r: 0, g: 0, b: 0, a: 1 },
-        storeOp: 'store',
+        storeOp: 'store'
       }],
     });
 
-    render_pass.setPipeline(render_pipeline);
-    render_pass.setBindGroup(0, render_bind_group);
-    render_pass.drawIndirect(splat_indirect_buffer, 0);
-    render_pass.end();
+    pass.setPipeline(render_pipeline);
+    pass.setBindGroup(0, render_bind_group);
+    pass.drawIndirect(indirect_render_buffer, 0);
+    pass.end();
   };
 
   // ===============================================
@@ -157,7 +160,6 @@ export default function get_renderer(
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
       preprocess(encoder);
       sorter.sort(encoder);
-      encoder.copyBufferToBuffer(sorter.sort_info_buffer, 0, splat_indirect_buffer, 4, 4);
       render(encoder, texture_view);
     },
     camera_buffer,
