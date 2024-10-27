@@ -68,27 +68,25 @@ struct Splat {
 };
 
 //TODO: bind your data here
-@group(2) @binding(0)
-var<storage, read_write> sort_infos: SortInfos;
-@group(2) @binding(1)
-var<storage, read_write> sort_depths : array<u32>;
-@group(2) @binding(2)
-var<storage, read_write> sort_indices : array<u32>;
-@group(2) @binding(3)
-var<storage, read_write> sort_dispatch: DispatchIndirect;
-
 @group(0) @binding(0)
 var<uniform> camera: CameraUniforms;
 @group(0) @binding(1)
 var<uniform> settings: RenderSettings;
+@group(0) @binding(2)
+var<storage, read> sh_coefficients: array<array<u32, 24>>;
+@group(0) @binding(3)
+var<storage, read> gaussians: array<Gaussian>;
+@group(0) @binding(4)
+var<storage, read_write> splats: array<Splat>;
 
 @group(1) @binding(0)
-var<storage,read> gaussians : array<Gaussian>;
-@group(1) @binding(1) 
-var<storage,read> sh_coefs : array<array<u32,24>>;
-
-@group(3) @binding(0)
-var<storage, read_write> splats: array<Splat>;
+var<storage, read_write> sort_infos: SortInfos;
+@group(1) @binding(1)
+var<storage, read_write> sort_depths : array<u32>;
+@group(1) @binding(2)
+var<storage, read_write> sort_indices : array<u32>;
+@group(1) @binding(3)
+var<storage, read_write> sort_dispatch: DispatchIndirect;
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
