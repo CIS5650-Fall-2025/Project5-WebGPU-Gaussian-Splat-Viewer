@@ -8,10 +8,12 @@ struct CameraUniforms {
 };
 
 struct Splat {
-    pos_ndc: vec3<f32>,
-    size_ndc: vec2<f32>,
-    conic_matrix: mat3x3<f32>,
-    color: vec4<f32>
+    mean_xy: u32,
+    radii: u32,
+    conic_xy: u32,
+    conic_z: u32,
+    rgb_rg: u32,
+    rgb_b_opacity: u32
 };
 
 struct VertexOutput {
@@ -33,25 +35,22 @@ var<storage, read> splats: array<Splat>;
 fn vs_main(
 ) -> VertexOutput {
     //TODO: reconstruct 2D quad based on information from splat, pass 
-    var out: VertexOutput;
-    let splat = splats[vertex_index / 6u];
 
-    let quad_positions = array<vec2<f32>, 6>(
-        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(-1.0, 1.0),
-        vec2<f32>(1.0, 1.0), vec2<f32>(1.0, -1.0), vec2<f32>(-1.0, 1.0)
-    );
+    let splat = splats[sort_indices[instance_index]];
 
-    let vertex_pos_ndc = vec2<f32>(
-        quad_positions[vertex_index].x * splat.size_ndc.x + splat.pos_ndc.x,
-        quad_positions[vertex_index].y * splat.size_ndc.y + splat.pos_ndc.y
-    );
+    let mean_xy = unpack2x16float(splat.mean_xy);
+    let diameter = 2.0 * unpack2x16float(splat.radii);
+    let rgb_rg = unpack2x16float(splat.rgb_rg);
+    let rgb_b_opacity = unpack2x16float(splat.rgb_b_opacity);;
+    let conic_xy = unpack2x16float(splat.conic_xy);
+    let conic_z = unpack2x16float(splat.conic_z);
 
     out.position = vec4<f32>(vertex_pos_ndc, splat.pos_ndc.z, 1.0);
 
-    out.conic_matrix_0 = splat.conic_matrix[0];
-    out.conic_matrix_1 = splat.conic_matrix[1];
-    out.conic_matrix_2 = splat.conic_matrix[2];
-    out.color = splat.color;
+    out.mean_xy = mean_xy;
+    out.radii = diameter/2;
+    out.conic_xy = splat.conic_xy;
+    out.rgb_rg = rgb_rg;
 
     return out;
 }
