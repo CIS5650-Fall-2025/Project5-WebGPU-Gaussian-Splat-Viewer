@@ -8,12 +8,48 @@ struct Splat {
     size: vec2f,
 };
 
+@group(0) @binding(0)
+var<storage, read> sort_indices : array<u32>;
+@group(0) @binding(1)
+var<storage, read> splats: array<Splat>;
+
 @vertex
 fn vs_main(
+    @builtin(instance_index) instance : u32,
+    @builtin(vertex_index) vertex : u32
 ) -> VertexOutput {
-    //TODO: reconstruct 2D quad based on information from splat, pass 
+
+    let splat = splats[instance];
+
+    // let positions = array(
+    //     splat.xy + vec2(-splat.size.x, -splat.size.y),
+    //     splat.xy + vec2(splat.size.x, -splat.size.y),
+    //     splat.xy + vec2(-splat.size.x, splat.size.y),
+
+    //     splat.xy + vec2(-splat.size.x, splat.size.y),
+    //     splat.xy + vec2(splat.size.x, -splat.size.y),
+    //     splat.xy + vec2(splat.size.x, splat.size.y),
+    // );
+
+    let xy = splat.xy;
+    let size = splat.size;
+
+    let positions = array(
+        xy + vec2(-size.x,  size.y),
+        xy + vec2(-size.x, -size.y),
+        xy + vec2( size.x, -size.y),
+
+        xy + vec2( size.x, -size.y),
+        xy + vec2( size.x,  size.y),
+        xy + vec2(-size.x,  size.y),
+    );
+
+    let sort_index = sort_indices[0];
+
+
+
     var out: VertexOutput;
-    out.position = vec4<f32>(1. ,1. , 0., 1.);
+    out.position = vec4(positions[vertex], 0.0, 1.0);
     return out;
 }
 

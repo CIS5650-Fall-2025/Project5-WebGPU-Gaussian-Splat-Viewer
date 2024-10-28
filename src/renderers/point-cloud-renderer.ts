@@ -32,7 +32,7 @@ export default function get_renderer(
   });
 
   const gaussian_bind_group = device.createBindGroup({
-    label: 'point cloud gaussians',
+    label: 'gaussians bind group',
     layout: render_pipeline.getBindGroupLayout(1),
     entries: [
       {binding: 0, resource: { buffer: pc.gaussian_3d_buffer }},

@@ -123,6 +123,11 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
 @compute @workgroup_size(workgroupSize,1,1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
+
+    if (idx >= arrayLength(&gaussians)) {
+        return;
+    }
+
     let gaussian = gaussians[idx];
 
     let a = unpack2x16float(gaussian.pos_opacity[0]);
@@ -135,74 +140,88 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let clip_space_pos = camera.proj * view_space_pos;
     let screen_space_pos = clip_space_pos.xy / clip_space_pos.w;
 
-    if (any(abs(screen_space_pos.xy) > vec2(1.1)) || view_space_pos.z < 0.0) {
-        return;
-    }
+    splats[idx].xy = screen_space_pos.xy;
+    splats[idx].size = vec2(0.01, 0.01);
 
-    let r_a = unpack2x16float(gaussian.rot[0]);
-    let r_b = unpack2x16float(gaussian.rot[1]);
-    let r = vec4(r_a, r_b);
+    let view = camera.view;
+    let pos_opacity = gaussians[idx].pos_opacity;
+    let passes = sort_infos.passes;
+    let sort_depth = sort_depths[0];
+    let sort_index = sort_indices[0];
+    let dispatch_z = sort_dispatch.dispatch_z;
+    let gs = render_settings.gaussian_scaling;
 
-    let R = mat3x3f(
-        1.f - 2.f * (r.z * r.z + r.w * r.w), 2.f * (r.y * r.z - r.x * r.w), 2.f * (r.y * r.w + r.x * r.z),
-        2.f * (r.y * r.z + r.x * r.w), 1.f - 2.f * (r.y * r.y + r.w * r.w), 2.f * (r.z * r.w - r.x * r.y),
-        2.f * (r.y * r.w - r.x * r.z), 2.f * (r.z * r.w + r.x * r.y), 1.f - 2.f * (r.y * r.y + r.z * r.z)
-    );
+    // if (any(abs(screen_space_pos.xy) > vec2(1.1)) || view_space_pos.z < 0.0) {
+    //     return;
+    // }
 
-    let s_a = unpack2x16float(gaussian.scale[0]);
-    let s_b = unpack2x16float(gaussian.scale[1]);
-    let s = exp(vec3(s_a, s_b.x));
+    // let r_a = unpack2x16float(gaussian.rot[0]);
+    // let r_b = unpack2x16float(gaussian.rot[1]);
+    // let r = vec4(r_a, r_b);
 
-    let S = mat3x3f(
-        s.x, 0, 0,
-        0, s.y, 0,
-        0, 0, s.z
-    ) * render_settings.gaussian_scaling;
+    // let R = mat3x3f(
+    //     1.f - 2.f * (r.z * r.z + r.w * r.w), 2.f * (r.y * r.z - r.x * r.w), 2.f * (r.y * r.w + r.x * r.z),
+    //     2.f * (r.y * r.z + r.x * r.w), 1.f - 2.f * (r.y * r.y + r.w * r.w), 2.f * (r.z * r.w - r.x * r.y),
+    //     2.f * (r.y * r.w - r.x * r.z), 2.f * (r.z * r.w + r.x * r.y), 1.f - 2.f * (r.y * r.y + r.z * r.z)
+    // );
 
-    let M = S * R;
-    let Sigma = transpose(M) * M;
+    // let s_a = unpack2x16float(gaussian.scale[0]);
+    // let s_b = unpack2x16float(gaussian.scale[1]);
+    // let s = exp(vec3(s_a, s_b.x));
 
-    // cov2d
+    // let S = mat3x3f(
+    //     s.x, 0, 0,
+    //     0, s.y, 0,
+    //     0, 0, s.z
+    // ) * render_settings.gaussian_scaling;
 
-    var t = view_space_pos.xyz;
-    let lim = 1.3 * tan(camera.focal);
-    let ttz = t.xy / lim;
-    t.xy = clamp(ttz, -lim, lim) * t.z;
+    // let M = S * R;
+    // let Sigma = transpose(M) * M;
 
-    let J = mat3x3f(
-        camera.focal.x / t.z, 0.0, -(camera.focal.x * t.x) / (t.z * t.z),
-        0.0, camera.focal.y / t.z, -(camera.focal.y * t.y) / (t.z * t.z),
-        0, 0, 0
-    );
+    // // cov2d
 
-    let W = transpose(mat3(camera.view));
+    // var t = view_space_pos.xyz;
+    // let lim = 1.3 * tan(camera.focal);
+    // let ttz = t.xy / lim;
+    // t = vec3(clamp(ttz, -lim, lim) * t.z, t.z);
 
-    let T = W * J;
+    // let J = mat3x3f(
+    //     camera.focal.x / t.z, 0.0, -(camera.focal.x * t.x) / (t.z * t.z),
+    //     0.0, camera.focal.y / t.z, -(camera.focal.y * t.y) / (t.z * t.z),
+    //     0, 0, 0
+    // );
 
-    let Vrk = mat3x3f(
-        Sigma[0][0], Sigma[0][1], Sigma[0][2],
-        Sigma[0][1], Sigma[1][1], Sigma[1][2],
-        Sigma[0][2], Sigma[1][2], Sigma[2][2]
-    );
+    // let W = transpose(mat3x3f(camera.view[0].xyz, camera.view[1].xyz, camera.view[2].xyz));
 
-    let cov = transpose(T) * transpose(Vrk) * T;
-    cov[0][0] += 0.3;
-    cov[1][1] += 0.3;
+    // let T = W * J;
+
+    // let Vrk = mat3x3f(
+    //     Sigma[0][0], Sigma[0][1], Sigma[0][2],
+    //     Sigma[0][1], Sigma[1][1], Sigma[1][2],
+    //     Sigma[0][2], Sigma[1][2], Sigma[2][2]
+    // );
+
+    // var cov = transpose(T) * transpose(Vrk) * T;
+    // cov[0][0] += 0.3;
+    // cov[1][1] += 0.3;
     
-    // TODO(rahul): measure perf of using determinant
-    // vs manually calculating it
-    let det = determinant(cov);
-    let det_inv = 1.0 / det;
-    let conic = vec3(cov[1][1], -cov[0][1], cov[0][0]) * det_inv;
+    // // TODO(rahul): measure perf of using determinant
+    // // vs manually calculating it
+    // let det = determinant(cov);
+    // let det_inv = 1.0 / det;
+    // let conic = vec3(cov[1][1], -cov[0][1], cov[0][0]) * det_inv;
 
-    let mid = 0.5 * (cov[0][0] + cov[1][1]);
-    let lambda1 = mid + sqrt(max(0.1, mid * mid - det));
-    let lambda2 = mid - sqrt(max(0.1, mid * mid - det));
-    let radius = ceil(3.0 * sqrt(max(lambda1, lambda2)));
+    // let mid = 0.5 * (cov[0][0] + cov[1][1]);
+    // let lambda1 = mid + sqrt(max(0.1, mid * mid - det));
+    // let lambda2 = mid - sqrt(max(0.1, mid * mid - det));
+    // let radius = ceil(3.0 * sqrt(max(lambda1, lambda2)));
 
-    splat[idx].xy = screen_space_pos;
-    splat[idx].size = vec2(radius) / camera.viewport;
+    // let sort_index = atomicAdd(&sort_infos.keys_size, 1u);
+    // splats[sort_index].xy = screen_space_pos;
+    // splats[sort_index].size = vec2(radius) / camera.viewport;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
-    // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
+    // if (sort_index % keys_per_dispatch == 0) {
+    //     atomicAdd(&sort_dispatch.dispatch_x, 1u);
+    // }
 }
