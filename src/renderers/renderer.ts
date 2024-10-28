@@ -8,7 +8,7 @@ import { CameraControl } from '../camera/camera-control';
 import { time, timeReturn } from '../utils/simple-console';
 
 export interface Renderer {
-  frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => void,
+  frame: (texture_view: GPUTextureView) => void,
   camera_buffer: GPUBuffer,
 }
 
@@ -149,10 +149,10 @@ export default async function init(
     if (ply_file_loaded && cam_file_loaded) {
       params.dt = timeReturn();
       time();
-      const encoder = device.createCommandEncoder();
+      // const encoder = device.createCommandEncoder();
       const texture_view = context.getCurrentTexture().createView();
-      renderer.frame(encoder, texture_view);
-      device.queue.submit([encoder.finish()]);
+      renderer.frame(texture_view);
+      // device.queue.submit([encoder.finish()]);
     }
     requestAnimationFrame(frame);
   }

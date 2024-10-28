@@ -123,6 +123,11 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let unhomogenized_screen_pos = camera.proj * camera.view * vec4<f32>(global_pos, 1.0);
     splats[idx].screen_pos = unhomogenized_screen_pos.xyz / unhomogenized_screen_pos.w;
 
+    // check if the quad is valid
+    if (splats[idx].screen_pos.x > -1.2 && splats[idx].screen_pos.x < 1.2 &&
+        splats[idx].screen_pos.y > -1.2 && splats[idx].screen_pos.y < 1.2) {
+        atomicAdd(&sort_infos.keys_size, 1u);
+    }
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
 }
