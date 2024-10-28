@@ -48,7 +48,7 @@ export default async function init(
   const params = {
     fps: 0.0,
     gaussian_multiplier: 1,
-    renderer: 'pointcloud',
+    renderer: 'gaussian',
     ply_file: '',
     cam_file: '',
   };
@@ -121,7 +121,9 @@ export default async function init(
       'gaussian_multiplier',
       {min: 0, max: 1.5}
     ).on('change', (e) => {
-      //Bind constants to the gaussian renderer.
+      if (gaussian_renderer) {
+        device.queue.writeBuffer(gaussian_renderer.render_settings_buffer, 0, new Float32Array([params.gaussian_multiplier]));
+      }
     });
   }
 

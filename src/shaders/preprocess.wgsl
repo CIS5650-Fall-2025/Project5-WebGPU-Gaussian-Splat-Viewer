@@ -140,20 +140,20 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let clip_space_pos = camera.proj * view_space_pos;
     let screen_space_pos = clip_space_pos.xy / clip_space_pos.w;
 
-    splats[idx].xy = screen_space_pos.xy;
-    splats[idx].size = vec2(0.01, 0.01);
+    if (any(abs(screen_space_pos.xy) > vec2(1.2)) || view_space_pos.z < 0.0) {
+        return;
+    }
 
-    let view = camera.view;
-    let pos_opacity = gaussians[idx].pos_opacity;
-    let passes = sort_infos.passes;
+    let sort_index = atomicAdd(&sort_infos.keys_size, 1u);
+
+    splats[sort_index].xy = screen_space_pos.xy;
+    splats[sort_index].size = vec2(0.01, 0.01) * render_settings.gaussian_scaling;
+
+    // TODO(rahul): remove
     let sort_depth = sort_depths[0];
-    let sort_index = sort_indices[0];
+    let sort_idx = sort_indices[0];
     let dispatch_z = sort_dispatch.dispatch_z;
-    let gs = render_settings.gaussian_scaling;
 
-    // if (any(abs(screen_space_pos.xy) > vec2(1.1)) || view_space_pos.z < 0.0) {
-    //     return;
-    // }
 
     // let r_a = unpack2x16float(gaussian.rot[0]);
     // let r_b = unpack2x16float(gaussian.rot[1]);

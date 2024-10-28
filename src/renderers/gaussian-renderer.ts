@@ -6,7 +6,7 @@ import { Renderer } from './renderer';
 import { vec2 } from 'wgpu-matrix';
 
 export interface GaussianRenderer extends Renderer {
-
+  render_settings_buffer: GPUBuffer;
 }
 
 // Utility to create GPU buffers
@@ -67,7 +67,7 @@ export default function get_renderer(
     "indirect buffer",
     16,
     GPUBufferUsage.COPY_DST | GPUBufferUsage.INDIRECT,
-    new Uint32Array([6, pc.num_points, 0, 0])
+    new Uint32Array([6, 0, 0, 0])
   );
 
   // ===============================================
@@ -157,6 +157,8 @@ export default function get_renderer(
   // ===============================================
 
   const preprocess = (encoder: GPUCommandEncoder) => {
+    encoder.copyBufferToBuffer(nulling_data_buffer, 0, sorter.sort_info_buffer, 0, 4);
+    encoder.copyBufferToBuffer(nulling_data_buffer, 0, sorter.sort_dispatch_indirect_buffer, 0, 4);
     const compute_pass = encoder.beginComputePass({ label: "preprocess gaussians" })
     compute_pass.setPipeline(preprocess_pipeline);
     compute_pass.setBindGroup(0, camera_bind_group);
@@ -168,11 +170,7 @@ export default function get_renderer(
   };
 
   const render = (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
-
-    // encoder.copyBufferToBuffer(nulling_data_buffer, 0, sorter.sort_info_buffer, 0, 4);
-    // encoder.copyBufferToBuffer(nulling_data_buffer, 0, sorter.sort_dispatch_indirect_buffer, 0, 4);
-    // encoder.copyBufferToBuffer(sorter.sort_info_buffer, 0, indirect_buffer, 4, 4);
-
+    encoder.copyBufferToBuffer(sorter.sort_info_buffer, 0, indirect_buffer, 4, 4);
     const pass = encoder.beginRenderPass({
       label: 'gaussian render',
       colorAttachments: [{
@@ -200,5 +198,6 @@ export default function get_renderer(
       render(encoder, texture_view);
     },
     camera_buffer,
+    render_settings_buffer,
   };
 }

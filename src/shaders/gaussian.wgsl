@@ -21,32 +21,17 @@ fn vs_main(
 
     let splat = splats[instance];
 
-    // let positions = array(
-    //     splat.xy + vec2(-splat.size.x, -splat.size.y),
-    //     splat.xy + vec2(splat.size.x, -splat.size.y),
-    //     splat.xy + vec2(-splat.size.x, splat.size.y),
-
-    //     splat.xy + vec2(-splat.size.x, splat.size.y),
-    //     splat.xy + vec2(splat.size.x, -splat.size.y),
-    //     splat.xy + vec2(splat.size.x, splat.size.y),
-    // );
-
-    let xy = splat.xy;
-    let size = splat.size;
-
     let positions = array(
-        xy + vec2(-size.x,  size.y),
-        xy + vec2(-size.x, -size.y),
-        xy + vec2( size.x, -size.y),
+        splat.xy + vec2(-splat.size.x,  splat.size.y),
+        splat.xy + vec2(-splat.size.x, -splat.size.y),
+        splat.xy + vec2( splat.size.x, -splat.size.y),
 
-        xy + vec2( size.x, -size.y),
-        xy + vec2( size.x,  size.y),
-        xy + vec2(-size.x,  size.y),
+        splat.xy + vec2( splat.size.x, -splat.size.y),
+        splat.xy + vec2( splat.size.x,  splat.size.y),
+        splat.xy + vec2(-splat.size.x,  splat.size.y),
     );
 
     let sort_index = sort_indices[0];
-
-
 
     var out: VertexOutput;
     out.position = vec4(positions[vertex], 0.0, 1.0);
