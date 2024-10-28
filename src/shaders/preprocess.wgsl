@@ -57,17 +57,18 @@ struct Gaussian {
 
 struct Splat {
     //TODO: store information for 2D splat rendering
+    global_pos: vec3<f32>,
 };
 
 //TODO: bind your data here
-@group(2) @binding(0)
-var<storage, read_write> sort_infos: SortInfos;
-@group(2) @binding(1)
-var<storage, read_write> sort_depths : array<u32>;
-@group(2) @binding(2)
-var<storage, read_write> sort_indices : array<u32>;
-@group(2) @binding(3)
-var<storage, read_write> sort_dispatch: DispatchIndirect;
+
+@group(0) @binding(0) var<uniform> camera: CameraUniforms;
+@group(0) @binding(1) var<storage, read> gaussians : array<Gaussian>;
+
+@group(2) @binding(0) var<storage, read_write> sort_infos: SortInfos;
+@group(2) @binding(1) var<storage, read_write> sort_depths : array<u32>;
+@group(2) @binding(2) var<storage, read_write> sort_indices : array<u32>;
+@group(2) @binding(3) var<storage, read_write> sort_dispatch: DispatchIndirect;
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {

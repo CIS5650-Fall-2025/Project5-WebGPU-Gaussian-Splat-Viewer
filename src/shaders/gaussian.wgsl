@@ -5,6 +5,7 @@ struct VertexOutput {
 
 struct Splat {
     //TODO: information defined in preprocess compute shader
+    global_pos: vec3<f32>,
 };
 
 @vertex
