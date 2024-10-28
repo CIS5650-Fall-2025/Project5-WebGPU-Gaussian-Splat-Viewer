@@ -67,7 +67,6 @@ struct Splat {
     rgb_b_opacity: u32,
 };
 
-//TODO: bind your data here
 @group(0) @binding(0)
 var<uniform> camera: CameraUniforms;
 @group(0) @binding(1)
@@ -90,7 +89,6 @@ var<storage, read_write> sort_dispatch: DispatchIndirect;
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
-    //TODO: access your binded sh_coeff, see load.ts for how it is stored
     return vec3<f32>(
         unpack2x16float(sh_coefs[splat_idx][(3u*c_idx)*0.5])[(3u*c_idx) % 2u], 
         unpack2x16float(sh_coefs[splat_idx][(3u*c_idx+1u)*0.5])[(3u*c_idx+1u) % 2u], 
@@ -131,8 +129,8 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
     return  max(vec3<f32>(0.), result);
 }
 
-// Normalize so that the normal is a unit vector.
 fn normalizePlane(plane: vec4<f32>) -> vec4<f32> {
+    // Normalize so that the normal is a unit vector.
     let length = length(plane.xyz);
     return plane / length;
 }
@@ -158,7 +156,7 @@ fn extractFrustumPlanes(view_proj: mat4x4<f32>) -> array<vec4<f32>, 6> {
     return planes;
 }
 
-fn frustumCull(pos: vec4<f32>, scale: vec3<f32>, view_proj: mat4x4<f32>) -> bool {
+fn cull(pos: vec4<f32>, scale: vec3<f32>, view_proj: mat4x4<f32>) -> bool {
     var enlarged_scale = abs(scale) * 1.1;
     let pos_in_view_space = (camera.view * pos).xyz;
     let min_bounds = pos_in_view_space.xyz - enlarged_scale;
@@ -185,6 +183,15 @@ fn frustumCull(pos: vec4<f32>, scale: vec3<f32>, view_proj: mat4x4<f32>) -> bool
     }
 
     return true;
+}
+
+fn frustumCull(mean_clip: vec4<f32>) -> bool {
+    let clip_sz = 1.3 * mean_clip.w;
+    let z = mean_clip.z / mean_clip.w;
+    return 
+        mean_clip.x < -clip_sz || mean_clip.x > clip_sz
+        || mean_clip.y < -clip_sz || mean_clip.y > clip_sz
+        || z <= 0.0 || z >= 1.0;
 }
 
 fn quaternionToMatrix(q: vec4<f32>) -> mat3x3<f32> {
@@ -279,8 +286,8 @@ fn computeCov2D(cov3D: array<f32, 6>, mean: vec4f) -> vec3f {
 @compute @workgroup_size(workgroupSize,1,1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
-    //TODO: set up pipeline as described in instruction
-
+    
+    if (idx >= arrayLength(&gaussians)) { return; };
     let gaussian = gaussians[idx];
     
     let pos_xy = unpack2x16float(gaussian.pos_opacity[0]);
