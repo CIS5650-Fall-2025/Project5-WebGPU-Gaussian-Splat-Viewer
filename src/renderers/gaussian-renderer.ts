@@ -46,7 +46,7 @@ export default function get_renderer(
   const splatBuffer = createBuffer(
     device,
     'splat buffer',
-    pc.num_points * (4 * 4),
+    pc.num_points * ((4 + 4 + 8 + 8) * 4),
     GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   );
 
@@ -86,6 +86,7 @@ export default function get_renderer(
     entries: [
       { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
       { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
     ],
   });
 
@@ -142,6 +143,7 @@ export default function get_renderer(
     entries: [
       { binding: 0, resource: { buffer: splatBuffer } },
       { binding: 1, resource: { buffer: render_settings_buffer } },
+      { binding: 2, resource: { buffer: pc.sh_buffer } },
     ],
   });
 
@@ -158,18 +160,30 @@ export default function get_renderer(
     fragment: {
       module: device.createShaderModule({ code: renderWGSL }),
       entryPoint: 'fs_main',
-      targets: [{ format: presentation_format }],
-    },
-    primitive: {
-      topology: 'triangle-list',
-    },
+      targets: [{ 
+        format: presentation_format,
+        blend: {
+          color: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+              operation: 'add',
+          },
+          alpha: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+              operation: 'add',
+          },
+      }, 
+      }],
+    }
   });
 
   const render_bind_group = device.createBindGroup({
     layout: render_pipeline.getBindGroupLayout(0),
     entries: [
       { binding: 0, resource: { buffer: splatBuffer } },
-      { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } }
+      { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
+      { binding: 2, resource: { buffer: camera_buffer } },
     ],
   });
 
@@ -229,15 +243,15 @@ export default function get_renderer(
 
       preprocess(encoder);
       
+      sorter.sort(encoder);
+
       // Copy the instance count to the indirect draw buffer
       encoder.copyBufferToBuffer(
         sorter.sort_info_buffer, 0,
         indirect_draw_buffer, 4,
         4
       );
-
-      sorter.sort(encoder);
-
+      
       render(encoder, texture_view);
     },
     camera_buffer,
