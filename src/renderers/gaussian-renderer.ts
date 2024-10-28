@@ -3,6 +3,7 @@ import preprocessWGSL from '../shaders/preprocess.wgsl';
 import renderWGSL from '../shaders/gaussian.wgsl';
 import { get_sorter,c_histogram_block_rows,C } from '../sort/sort';
 import { Renderer } from './renderer';
+import { encode } from '@loaders.gl/core';
 
 export interface GaussianRenderer extends Renderer {
 
@@ -36,6 +37,17 @@ export default function get_renderer(
 
   const nulling_data = new Uint32Array([0]);
 
+
+  const indirectdraw_buffersize = 4 * Uint32Array.BYTES_PER_ELEMENT;
+  const indirectdraw_buffer = device.createBuffer({
+    label:"indirect draw buffer",
+    size: indirectdraw_buffersize,
+    usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  })
+
+  const indirectdraw_host = new Uint32Array([6, pc.num_points, 0, 0]);
+  device.queue.writeBuffer(indirectdraw_buffer, 0, indirectdraw_host.buffer);
+
   // ===============================================
   //    Create Compute Pipeline and Bind Groups
   // ===============================================
@@ -67,7 +79,37 @@ export default function get_renderer(
   // ===============================================
   //    Create Render Pipeline and Bind Groups
   // ===============================================
-  
+  this.renderPipeline = device.createRenderPipeline({
+    label : "render pipeline",
+    layout: "auto",
+    vertex: {
+        module: device.createShaderModule({
+            label: "vert shader",
+            code: renderWGSL,
+        }),
+        entryPoint: "vs_main",
+        buffers: [{
+          arrayStride: 2 * Float32Array.BYTES_PER_ELEMENT,
+          stepMode: "vertex",
+          attributes:[{
+            shaderLocation:0,
+            offset:0,
+            format: 'float32x2'
+
+          }],
+        }],
+    },
+    fragment: {
+        module: device.createShaderModule({
+            label: "frag shader",
+            code: renderWGSL,
+        }),
+        entryPoint: "fs_main",
+        targets: [{format: presentation_format}]
+    }
+});
+
+
 
   // ===============================================
   //    Command Encoder Functions
@@ -80,6 +122,16 @@ export default function get_renderer(
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
       sorter.sort(encoder);
+      const render_pass = encoder.beginRenderPass({
+        label:"render pass",
+        colorAttachments:[{
+          view: texture_view,
+          loadOp : "clear",
+          storeOp: "store",
+          clearValue: {r: 0, g:0, b:0, a:1},
+        }]
+      })
+      render_pass.end();
     },
     camera_buffer,
   };
