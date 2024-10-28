@@ -66,6 +66,7 @@ struct Splat {
 @group(0) @binding(1) var<storage, read> gaussians : array<Gaussian>;
 
 @group(1) @binding(0) var<storage, read_write> splats: array<Splat>;
+@group(1) @binding(1) var<uniform> gs_multiplier: f32;
 
 @group(2) @binding(0) var<storage, read_write> sort_infos: SortInfos;
 @group(2) @binding(1) var<storage, read_write> sort_depths : array<u32>;
@@ -121,12 +122,15 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let pos_za = unpack2x16float(gaussians[idx].pos_opacity[1]); // Second u32 contains z,opacity as f16
     let global_pos = vec3<f32>(pos_xy.x, pos_xy.y, pos_za.x);
     let unhomogenized_screen_pos = camera.proj * camera.view * vec4<f32>(global_pos, 1.0);
-    splats[idx].screen_pos = unhomogenized_screen_pos.xyz / unhomogenized_screen_pos.w;
+    let homogenized_screen_pos = unhomogenized_screen_pos.xyz / unhomogenized_screen_pos.w;
 
     // check if the quad is valid
-    if (splats[idx].screen_pos.x > -1.2 && splats[idx].screen_pos.x < 1.2 &&
-        splats[idx].screen_pos.y > -1.2 && splats[idx].screen_pos.y < 1.2) {
-        atomicAdd(&sort_infos.keys_size, 1u);
+    if (homogenized_screen_pos.x > -1.2 && homogenized_screen_pos.x < 1.2 &&
+        homogenized_screen_pos.y > -1.2 && homogenized_screen_pos.y < 1.2) {
+        // store pos
+        splats[atomicAdd(&sort_infos.keys_size, 1u)].screen_pos = homogenized_screen_pos;
+    }else{
+        return;
     }
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys

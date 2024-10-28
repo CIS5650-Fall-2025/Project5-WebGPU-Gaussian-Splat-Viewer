@@ -9,19 +9,20 @@ struct Splat {
 };
 
 @group(0) @binding(0) var<storage, read> splats: array<Splat>;
-
+@group(0) @binding(1) var<uniform> gs_multiplier: f32;
 @vertex
 fn vs_main(
     @builtin(vertex_index) vertex_index: u32,
     @builtin(instance_index) instance_index: u32,
 ) -> VertexOutput {
+    let base_scale = 0.005 * gs_multiplier;
     let quad_offsets = array<vec2<f32>, 6>(
-        vec2<f32>(-0.005, -0.005),  // First triangle
-        vec2<f32>( 0.005, -0.005),
-        vec2<f32>( 0.005,  0.005),
-        vec2<f32>(-0.005, -0.005),  // Second triangle
-        vec2<f32>( 0.005,  0.005),
-        vec2<f32>(-0.005,  0.005),
+        vec2<f32>(-base_scale, -base_scale),  // First triangle
+        vec2<f32>( base_scale, -base_scale),
+        vec2<f32>( base_scale,  base_scale),
+        vec2<f32>(-base_scale, -base_scale),  // Second triangle
+        vec2<f32>( base_scale,  base_scale),
+        vec2<f32>(-base_scale,  base_scale),
     );
     let quad_center = splats[instance_index].screen_pos;
 

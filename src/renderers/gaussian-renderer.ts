@@ -26,6 +26,7 @@ export default function get_renderer(
   device: GPUDevice,
   presentation_format: GPUTextureFormat,
   camera_buffer: GPUBuffer,
+  gs_multiplier_buffer: GPUBuffer,
 ): GaussianRenderer {
 
   const sorter = get_sorter(pc.num_points, device);
@@ -41,11 +42,12 @@ export default function get_renderer(
   const num_points = pc.num_points;
   const guassian_splat_buffer = createBuffer(
     device, 'gaussian splat buffer', 
-    num_points * splat_size, GPUBufferUsage.STORAGE);
+    num_points * splat_size, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
 
   const valid_quad_counter_buffer = createBuffer(
     device, 'valid quad counter buffer', 
     1 * f32_size, GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ);
+  const log_num_points = false;
   // ===============================================
   //    Create Compute Pipeline and Bind Groups
   // ===============================================
@@ -61,7 +63,8 @@ export default function get_renderer(
   const gs_preprocess_bind_group_layout = device.createBindGroupLayout({
     label: 'gaussian preprocess bind group layout',
     entries: [
-      {binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' }}
+      {binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' }},
+      {binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' }}
     ],
   });
   const sort_bind_group_layout = device.createBindGroupLayout({
@@ -108,6 +111,7 @@ export default function get_renderer(
     layout: gs_preprocess_bind_group_layout,
     entries: [
       {binding: 0, resource: { buffer: guassian_splat_buffer }},
+      {binding: 1, resource: { buffer: gs_multiplier_buffer }},
     ],
   });
 
@@ -125,11 +129,17 @@ export default function get_renderer(
   const preprocess_compute = (encoder: GPUCommandEncoder) => {
     const pass = encoder.beginComputePass();
     
-    // Clear sort info after render
+    // Clear sort info before preprocess
     device.queue.writeBuffer(
       sorter.sort_info_buffer,
       0,  // destination offset
       new Uint32Array([0, 0, 0, 0, 0])  // Reset keys_size to 0
+    );
+    // clear splat buffer before preprocess
+    device.queue.writeBuffer(
+      guassian_splat_buffer,
+      0,  // destination offset
+      new Float32Array(num_points * splat_size / f32_size)  // Reset splat buffer to 0
     );
 
     pass.setPipeline(preprocess_pipeline);
@@ -146,9 +156,16 @@ export default function get_renderer(
   const gs_render_bind_group_layout = device.createBindGroupLayout({
     label: 'gaussian render bind group layout',
     entries: [
-      {binding: 0, 
-       visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, 
-       buffer: { type: 'read-only-storage' }}
+      {
+        binding: 0, 
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, 
+        buffer: { type: 'read-only-storage' }
+      },
+      {
+        binding: 1, 
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, 
+        buffer: { type: 'uniform' }
+      }
     ],
   });
 
@@ -157,6 +174,7 @@ export default function get_renderer(
     layout: gs_render_bind_group_layout,
     entries: [
       {binding: 0, resource: { buffer: guassian_splat_buffer }},
+      {binding: 1, resource: { buffer: gs_multiplier_buffer }},
     ],
   });
 
@@ -214,7 +232,9 @@ export default function get_renderer(
     device.queue.submit([encoder.finish()]);
     await valid_quad_counter_buffer.mapAsync(GPUMapMode.READ);
     const valid_quad_count = new Uint32Array(valid_quad_counter_buffer.getMappedRange())[0];
-    console.log('valid_quad_count', valid_quad_count, 'total_quad_count', pc.num_points);
+    if (log_num_points) {
+      console.log('valid_quad_count', valid_quad_count, 'total_quad_count', pc.num_points);
+    }
     valid_quad_counter_buffer.unmap();
     last_num_points = valid_quad_count;
   };
@@ -229,10 +249,7 @@ export default function get_renderer(
       });
       preprocess_compute(preprocess_encoder);
 
-      // const sort_encoder = device.createCommandEncoder({
-      //   label: 'gs sort encoder'
-      // });
-      sorter.sort(preprocess_encoder);
+      // sorter.sort(preprocess_encoder);
 
       device.queue.submit([preprocess_encoder.finish()]);
 

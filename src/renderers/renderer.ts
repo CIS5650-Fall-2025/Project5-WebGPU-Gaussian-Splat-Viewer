@@ -24,6 +24,13 @@ export default async function init(
   let pointcloud_renderer: Renderer | undefined; 
   let renderer: Renderer | undefined; 
   let cameras;
+  var gs_multiplier = 1.0;
+  let gs_multiplier_buffer = device.createBuffer({
+    label: 'gaussian multiplier',
+    size: 4,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(gs_multiplier_buffer, 0, new Float32Array([gs_multiplier]));
   
   const camera = new Camera(canvas, device);
   const control = new CameraControl(camera);
@@ -86,7 +93,7 @@ export default async function init(
       if (uploadedFile) {
         const pc = await load(uploadedFile, device);
         pointcloud_renderer = get_renderer_pointcloud(pc, device, presentation_format, camera.uniform_buffer);
-        gaussian_renderer = get_renderer_gaussian(pc, device, presentation_format, camera.uniform_buffer);
+        gaussian_renderer = get_renderer_gaussian(pc, device, presentation_format, camera.uniform_buffer, gs_multiplier_buffer);
         renderers = {
           pointcloud: pointcloud_renderer,
           gaussian: gaussian_renderer,
@@ -123,6 +130,10 @@ export default async function init(
       {min: 0, max: 1.5}
     ).on('change', (e) => {
       //TODO: Bind constants to the gaussian renderer.
+      gs_multiplier = e.value;
+      if (gs_multiplier_buffer) {
+        device.queue.writeBuffer(gs_multiplier_buffer, 0, new Float32Array([gs_multiplier]));
+      }
     });
   }
 
