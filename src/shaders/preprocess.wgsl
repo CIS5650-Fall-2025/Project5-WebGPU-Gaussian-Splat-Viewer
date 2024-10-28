@@ -57,13 +57,15 @@ struct Gaussian {
 
 struct Splat {
     //TODO: store information for 2D splat rendering
-    global_pos: vec3<f32>,
+    screen_pos: vec3<f32>,
 };
 
 //TODO: bind your data here
 
 @group(0) @binding(0) var<uniform> camera: CameraUniforms;
 @group(0) @binding(1) var<storage, read> gaussians : array<Gaussian>;
+
+@group(1) @binding(0) var<storage, read_write> splats: array<Splat>;
 
 @group(2) @binding(0) var<storage, read_write> sort_infos: SortInfos;
 @group(2) @binding(1) var<storage, read_write> sort_depths : array<u32>;
@@ -113,6 +115,13 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
     //TODO: set up pipeline as described in instruction
+
+    // compute screen (ndc) position of the gaussian, not pixel position, so range is [-1, 1]
+    let pos_xy = unpack2x16float(gaussians[idx].pos_opacity[0]); // First u32 contains x,y as f16
+    let pos_za = unpack2x16float(gaussians[idx].pos_opacity[1]); // Second u32 contains z,opacity as f16
+    let global_pos = vec3<f32>(pos_xy.x, pos_xy.y, pos_za.x);
+    let unhomogenized_screen_pos = camera.proj * camera.view * vec4<f32>(global_pos, 1.0);
+    splats[idx].screen_pos = unhomogenized_screen_pos.xyz / unhomogenized_screen_pos.w;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys

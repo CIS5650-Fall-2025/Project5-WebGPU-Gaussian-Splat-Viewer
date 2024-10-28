@@ -47,15 +47,15 @@ export default function get_renderer(
   // ===============================================
 
   // Preprocess Bind Group Layouts
-  const preprocess_bind_group_layout = device.createBindGroupLayout({
-    label: 'preprocess bind group layout',
+  const preprocess_projection_bind_group_layout = device.createBindGroupLayout({
+    label: 'preprocess projection bind group layout',
     entries: [
       {binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' }},
       {binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' }}
     ],
   }); 
-  const gaussian_bind_group_layout = device.createBindGroupLayout({
-    label: 'gaussian bind group layout',
+  const gs_preprocess_bind_group_layout = device.createBindGroupLayout({
+    label: 'gaussian preprocess bind group layout',
     entries: [
       {binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' }}
     ],
@@ -74,7 +74,11 @@ export default function get_renderer(
     label: 'preprocess',
     layout: device.createPipelineLayout({
       label: 'preprocess pipeline layout',
-      bindGroupLayouts: [preprocess_bind_group_layout, gaussian_bind_group_layout, sort_bind_group_layout]
+      bindGroupLayouts: [
+        preprocess_projection_bind_group_layout, 
+        gs_preprocess_bind_group_layout, 
+        sort_bind_group_layout
+      ]
     }),
     compute: {
       module: device.createShaderModule({ code: preprocessWGSL }),
@@ -88,16 +92,16 @@ export default function get_renderer(
 
   const preprocess_projection_bind_group = device.createBindGroup({
     label: 'preprocess projection',
-    layout: preprocess_bind_group_layout,
+    layout: preprocess_projection_bind_group_layout,
     entries: [
       {binding: 0, resource: { buffer: camera_buffer }},
       {binding: 1, resource: { buffer: pc.gaussian_3d_buffer }},
     ],
   });
 
-  const gaussian_bind_group = device.createBindGroup({
+  const gs_preprocess_bind_group = device.createBindGroup({
     label: 'gaussian',
-    layout: gaussian_bind_group_layout,
+    layout: gs_preprocess_bind_group_layout,
     entries: [
       {binding: 0, resource: { buffer: guassian_splat_buffer }},
     ],
@@ -118,7 +122,7 @@ export default function get_renderer(
     const pass = encoder.beginComputePass();
     pass.setPipeline(preprocess_pipeline);
     pass.setBindGroup(0, preprocess_projection_bind_group);
-    pass.setBindGroup(1, gaussian_bind_group);
+    pass.setBindGroup(1, gs_preprocess_bind_group);
     pass.setBindGroup(2, sort_bind_group);
     pass.dispatchWorkgroups(pc.num_points / C.histogram_wg_size);
     pass.end();
@@ -127,6 +131,60 @@ export default function get_renderer(
   // ===============================================
   //    Create Render Pipeline and Bind Groups
   // ===============================================
+  const gs_render_bind_group_layout = device.createBindGroupLayout({
+    label: 'gaussian render bind group layout',
+    entries: [
+      {binding: 0, 
+       visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, 
+       buffer: { type: 'read-only-storage' }}
+    ],
+  });
+
+  const gs_render_bind_group = device.createBindGroup({
+    label: 'gaussian render bind group ',
+    layout: gs_render_bind_group_layout,
+    entries: [
+      {binding: 0, resource: { buffer: guassian_splat_buffer }},
+    ],
+  });
+
+  const render_shader = device.createShaderModule({ code: renderWGSL });
+  const gaussian_render_pipeline = device.createRenderPipeline({
+    label: 'gaussian render',
+    layout: device.createPipelineLayout({
+      label: 'gaussian render pipeline layout',
+      bindGroupLayouts: [gs_render_bind_group_layout]
+    }),
+    vertex: {
+      module: render_shader,
+      entryPoint: 'vs_main',
+    },
+    fragment: {
+      module: render_shader,
+      entryPoint: 'fs_main',
+      targets: [{ format: presentation_format }],
+    },
+    primitive: {
+      topology: 'triangle-list',
+    },
+  });
+
+  const gaussian_render = (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
+    const pass = encoder.beginRenderPass({
+      label: 'gaussian render',
+      colorAttachments: [
+        { 
+          view: texture_view, 
+          loadOp: 'clear', 
+          storeOp: 'store' 
+        }
+      ],
+    });
+    pass.setPipeline(gaussian_render_pipeline);
+    pass.setBindGroup(0, gs_render_bind_group);
+    pass.draw(6, num_points); // 6 vertices per quad
+    pass.end();
+  }
 
   // ===============================================
   //    Command Encoder Functions
@@ -140,7 +198,7 @@ export default function get_renderer(
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
       preprocess_compute(encoder);
       sorter.sort(encoder);
-      // render_pipeline.
+      gaussian_render(encoder, texture_view);
     },
     camera_buffer,
   };
