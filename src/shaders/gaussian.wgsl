@@ -23,17 +23,21 @@ var<storage, read> sort_indices : array<u32>;
 @group(0) @binding(2)
 var<storage, read> splats: array<Splat>;
 
+const signs = array<vec2f, 6>(
+    vec2f(-1.0, 1.0), vec2f(-1.0, -1.0),
+    vec2f(1.0, -1.0), vec2f(1.0, -1.0),
+    vec2f(1.0, 1.0), vec2f(-1.0, 1.0)
+);
+
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
+    @location(0) mean: vec2f,
     @location(1) rgb_opacity: vec4f,
     @location(2) conic: vec3f
 };
 
 @vertex
-fn vs_main(
-) -> VertexOutput {
-    //TODO: reconstruct 2D quad based on information from splat, pass 
-
+fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) instance_index: u32) -> VertexOutput {
     let splat = splats[sort_indices[instance_index]];
 
     let mean_xy = unpack2x16float(splat.mean_xy);
@@ -43,14 +47,14 @@ fn vs_main(
     let conic_xy = unpack2x16float(splat.conic_xy);
     let conic_z = unpack2x16float(splat.conic_z);
 
-    out.position = vec4<f32>(vertex_pos_ndc, splat.pos_ndc.z, 1.0);
+    let sign = signs[vertex_index];
 
-    out.mean_xy = mean_xy;
-    out.radii = diameter/2;
-    out.conic_xy = splat.conic_xy;
-    out.rgb_rg = rgb_rg;
-
-    return out;
+    return VertexOutput(
+        vec4(mean_xy.x + sign.x*diameter.x, mean_xy.y + sign.y*diameter.y, 0.0, 1.0),
+        vec2f(mean_xy.x, mean_xy.y),
+        vec4f(rgb_rg.x, rgb_rg.y, rgb_b_opacity.x, 1.0/(1.0+exp(-rgb_b_opacity.y))),
+        vec3f(conic_xy.x, conic_xy.y, conic_z.x),
+    );
 }
 
 @fragment
