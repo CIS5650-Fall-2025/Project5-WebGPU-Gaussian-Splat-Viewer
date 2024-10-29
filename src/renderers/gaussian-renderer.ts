@@ -94,7 +94,6 @@ export default function get_renderer(
     ],
   });
 
-
   // ===============================================
   //    Create Render Pipeline and Bind Groups
   // ===============================================
@@ -111,6 +110,10 @@ export default function get_renderer(
       module: device.createShaderModule({code: renderWGSL}),
       targets: [{
         format: presentation_format,
+        blend: {
+          color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+          alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+        },
       }]
     },
 });
@@ -145,6 +148,7 @@ export default function get_renderer(
     encoder.copyBufferToBuffer(sorter.sort_info_buffer, 0, indirect_render_buffer, 4, 4);
 
     const pass = encoder.beginRenderPass({
+      label: 'render pass',
       colorAttachments: [{
         view: texture_view,
         loadOp: 'clear',
