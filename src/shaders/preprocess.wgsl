@@ -95,7 +95,7 @@ fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
     } else {
         let rg = unpack2x16float(color_data[base]);
         let ba = unpack2x16float(color_data[base + 1]);
-        return vec3f(rg.y, rg.x, ba.y);
+        return vec3f(rg.y, ba.x, ba.y);
     }
 }
 
