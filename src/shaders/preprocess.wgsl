@@ -66,22 +66,22 @@ struct Splat {
 //TODO: bind your data here
 @group(0) @binding(0)
 var<uniform> camera: CameraUniforms;
-@group(1) @binding(0)
+@group(0) @binding(1)
 var<storage, read> gaussians: array<Gaussian>;
-@group(3) @binding(0)
+@group(0) @binding(2)
 var<storage, read_write> splat_elements: array<Splat>;
-@group(3) @binding(1)
+@group(0) @binding(3)
 var<uniform> settings: RenderSettings;
-@group(3) @binding(2)
+@group(0) @binding(4)
 var<storage, read> color_data: array<u32>;
 
-@group(2) @binding(0)
+@group(1) @binding(0)
 var<storage, read_write> sort_infos: SortInfos;
-@group(2) @binding(1)
+@group(1) @binding(1)
 var<storage, read_write> sort_depths : array<u32>;
-@group(2) @binding(2)
+@group(1) @binding(2)
 var<storage, read_write> sort_indices : array<u32>;
-@group(2) @binding(3)
+@group(1) @binding(3)
 var<storage, read_write> sort_dispatch: DispatchIndirect;
 
 /// reads the ith sh coef from the storage buffer 
@@ -264,5 +264,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     
     sort_depths[splat_index] = bitcast<u32>(100.0f - view_depth);
     sort_indices[splat_index] = splat_index;
-    atomicAdd(&sort_dispatch.dispatch_x, 1u);
+    if (splat_index % keys_per_dispatch == 0) {
+        atomicAdd(&sort_dispatch.dispatch_x, 1u);
+    }
 }

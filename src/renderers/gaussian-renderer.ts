@@ -39,7 +39,7 @@ export default function get_renderer(
     device,
     'Clear Buffer ',
     4,
-    GPUBufferUsage.COPY_SRC,
+    GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     nulling_data);
 
   const settingsBuffer  = createBuffer(
@@ -74,21 +74,9 @@ export default function get_renderer(
     },
   });
 
-  const camera_bind_group = device.createBindGroup({
-    label: 'point cloud camera',
-    layout: preprocess_pipeline.getBindGroupLayout(0),
-    entries: [{binding: 0, resource: { buffer: camera_buffer }}],
-  });
-
-  const gaussian_bind_group = device.createBindGroup({
-    label: 'gaussian_bind_group',
-    layout: preprocess_pipeline.getBindGroupLayout(1),
-    entries: [{ binding: 0, resource: { buffer: pc.gaussian_3d_buffer }}],
-  });
-
   const sort_bind_group = device.createBindGroup({
     label: 'sort',
-    layout: preprocess_pipeline.getBindGroupLayout(2),
+    layout: preprocess_pipeline.getBindGroupLayout(1),
     entries: [
       { binding: 0, resource: { buffer: sorter.sort_info_buffer } },
       { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_depths_buffer } },
@@ -137,11 +125,13 @@ export default function get_renderer(
 
   const preprocessor_bind_group = device.createBindGroup({
     label: 'preprocessor_bind_group',
-    layout: preprocess_pipeline.getBindGroupLayout(3),
+    layout: preprocess_pipeline.getBindGroupLayout(0),
     entries: [
-      { binding: 0, resource: { buffer: splatBuffer } },
-      { binding: 1, resource: { buffer: settingsBuffer  } },
-      { binding: 2, resource: { buffer: pc.sh_buffer } },
+      { binding: 0, resource: { buffer: camera_buffer }},
+      { binding: 1, resource: { buffer: pc.gaussian_3d_buffer }},
+      { binding: 2, resource: { buffer: splatBuffer } },
+      { binding: 3, resource: { buffer: settingsBuffer } },
+      { binding: 4, resource: { buffer: pc.sh_buffer } },
     ],
   });
 
@@ -161,10 +151,8 @@ export default function get_renderer(
   const compute = (encoder: GPUCommandEncoder) => {
       const compute_pass = encoder.beginComputePass();
       compute_pass.setPipeline(preprocess_pipeline);
-      compute_pass.setBindGroup(0, camera_bind_group);
-      compute_pass.setBindGroup(1, gaussian_bind_group);
-      compute_pass.setBindGroup(2, sort_bind_group);
-      compute_pass.setBindGroup(3, preprocessor_bind_group);
+      compute_pass.setBindGroup(0, preprocessor_bind_group);
+      compute_pass.setBindGroup(1, sort_bind_group);
       compute_pass.dispatchWorkgroups(Math.ceil(pc.num_points / C.histogram_wg_size));
       compute_pass.end();
   };
