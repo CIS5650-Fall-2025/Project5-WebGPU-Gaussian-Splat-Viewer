@@ -329,7 +329,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 
     let key = atomicAdd(&sort_infos.keys_size, 1u);
     let z_far = camera.proj[3][2] / (1.0 - camera.proj[2][2]);
-    sort_depths[key] = u32(z_far - (camera.view * mean).z);
+    sort_depths[key] = bitcast<u32>(z_far - (camera.view * mean).z);
     sort_indices[key] = key;
 
     splats[key].mean_xy = pack2x16float(mean_screen);
