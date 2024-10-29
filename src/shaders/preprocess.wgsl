@@ -68,16 +68,16 @@ var<uniform> camera: CameraUniforms;
 @group(1) @binding(0)
 var<storage, read> gaussians: array<Gaussian>;
 
-// @group(2) @binding(0)
-// var<storage, read_write> sort_infos: SortInfos;
-// @group(2) @binding(1)
-// var<storage, read_write> sort_depths : array<u32>;
-// @group(2) @binding(2)
-// var<storage, read_write> sort_indices : array<u32>;
-// @group(2) @binding(3)
-// var<storage, read_write> sort_dispatch: DispatchIndirect;
-
 @group(2) @binding(0)
+var<storage, read_write> sort_infos: SortInfos;
+@group(2) @binding(1)
+var<storage, read_write> sort_depths : array<u32>;
+@group(2) @binding(2)
+var<storage, read_write> sort_indices : array<u32>;
+@group(2) @binding(3)
+var<storage, read_write> sort_dispatch: DispatchIndirect;
+
+@group(3) @binding(0)
 var<storage, read_write> splats: array<Splat>;
 
 /// reads the ith sh coef from the storage buffer 
@@ -133,12 +133,26 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let b = unpack2x16float(vertex.pos_opacity[1]);
     let pos_world = vec4f(a.x, a.y, b.x, 1.0f);
     let opa = b.y;
-    let pos_clip = camera.proj * camera.view * pos_world;
-    let pos_screen = pos_clip.xy / pos_clip.w;
+    let pos_view = camera.view * pos_world;
+    let pos_clip = camera.proj * pos_view;
+    let pos_ndc = pos_clip.xyz / pos_clip.w;
+
+    if (pos_ndc.x < -1.2f || pos_ndc.x > 1.2f ||
+        pos_ndc.y < -1.2f || pos_ndc.y > 1.2f ||
+        pos_ndc.z < 0.00f || pos_ndc.z > 1.0f) {
+        return;
+    } 
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
+
+    let passes = sort_infos.passes;
+    let sort_depth = sort_depths[0];
+    let sort_index = sort_indices[0];
+    let dispatch_z = sort_dispatch.dispatch_z;
     
-    let xy = pack2x16float(pos_screen);
-    splats[idx].xy = xy;
+    let index = atomicAdd(&sort_infos.keys_size, 1u);
+
+    let xy = pack2x16float(pos_ndc.xy);
+    splats[index].xy = xy;
 }

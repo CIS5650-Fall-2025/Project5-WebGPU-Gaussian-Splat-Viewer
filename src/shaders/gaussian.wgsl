@@ -10,6 +10,8 @@ struct Splat {
 
 @group(0) @binding(0)
 var<storage, read> splats: array<Splat>;
+@group(0) @binding(1)
+var<uniform> scaling: f32;
 
 @vertex
 fn vs_main(
@@ -21,17 +23,19 @@ fn vs_main(
     let splat = splats[instanceIndex];
     let xy = unpack2x16float(splat.xy);
     
+    let size = 0.005f * scaling;
+
     let corners = array<vec2f, 6>(
-        vec2f(xy.x - 0.005, xy.y + 0.005),
-        vec2f(xy.x - 0.005, xy.y - 0.005),
-        vec2f(xy.x + 0.005, xy.y - 0.005),
-        vec2f(xy.x + 0.005, xy.y - 0.005),
-        vec2f(xy.x + 0.005, xy.y + 0.005),
-        vec2f(xy.x - 0.005, xy.y + 0.005),
+        vec2f(xy.x - size, xy.y + size),
+        vec2f(xy.x - size, xy.y - size),
+        vec2f(xy.x + size, xy.y - size),
+        vec2f(xy.x + size, xy.y - size),
+        vec2f(xy.x + size, xy.y + size),
+        vec2f(xy.x - size, xy.y + size),
     );
     
     let pos = vec4(corners[vertexIndex].x, corners[vertexIndex].y, 0, 1);
-    out.position = position;
+    out.position = pos;
 
     return out;
 }

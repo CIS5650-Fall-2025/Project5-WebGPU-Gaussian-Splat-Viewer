@@ -5,7 +5,7 @@ import { get_sorter,c_histogram_block_rows,C } from '../sort/sort';
 import { Renderer } from './renderer';
 
 export interface GaussianRenderer extends Renderer {
-
+  scaling_buffer: GPUBuffer
 }
 
 // Utility to create GPU buffers
@@ -34,6 +34,14 @@ export default function get_renderer(
   //            Initialize GPU Buffers
   // ===============================================
 
+  const scaling_buffer = createBuffer(
+    device, 
+    'render_settings_buffer', 
+    4,
+    GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM, 
+    new Float32Array([1.0])
+  );
+  
   const nulling_data = new Uint32Array([0]);
 
   const nulling_buffer = createBuffer(
@@ -95,20 +103,20 @@ export default function get_renderer(
     ]
   });
 
-  // const sort_bind_group = device.createBindGroup({
-  //   label: 'preprocess sort bind group',
-  //   layout: preprocess_pipeline.getBindGroupLayout(2),
-  //   entries: [
-  //     { binding: 0, resource: { buffer: sorter.sort_info_buffer } },
-  //     { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_depths_buffer } },
-  //     { binding: 2, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
-  //     { binding: 3, resource: { buffer: sorter.sort_dispatch_indirect_buffer } }
-  //   ]
-  // });
+  const sort_bind_group = device.createBindGroup({
+    label: 'preprocess sort bind group',
+    layout: preprocess_pipeline.getBindGroupLayout(2),
+    entries: [
+      { binding: 0, resource: { buffer: sorter.sort_info_buffer } },
+      { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_depths_buffer } },
+      { binding: 2, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
+      { binding: 3, resource: { buffer: sorter.sort_dispatch_indirect_buffer } }
+    ]
+  });
 
   const splat_preprocess_bind_group = device.createBindGroup({
     label: 'preprocess splat bind group',
-    layout: preprocess_pipeline.getBindGroupLayout(2),
+    layout: preprocess_pipeline.getBindGroupLayout(3),
     entries: [
       { binding: 0, resource: { buffer: splat_buffer } }
     ]
@@ -136,7 +144,8 @@ export default function get_renderer(
     label: 'gaussian render splat bind group',
     layout: gaussian_render_pipeline.getBindGroupLayout(0),
     entries: [
-      { binding: 0, resource: { buffer: splat_buffer } }
+      { binding: 0, resource: { buffer: splat_buffer } },
+      { binding: 1, resource: { buffer: scaling_buffer }}
     ]
   });
 
@@ -151,8 +160,8 @@ export default function get_renderer(
 
     preprocess_pass.setBindGroup(0, camera_bind_group);
     preprocess_pass.setBindGroup(1, gaussian_bind_group);
-    //preprocess_pass.setBindGroup(2, sort_bind_group);
-    preprocess_pass.setBindGroup(2, splat_preprocess_bind_group);
+    preprocess_pass.setBindGroup(2, sort_bind_group);
+    preprocess_pass.setBindGroup(3, splat_preprocess_bind_group);
     
     preprocess_pass.dispatchWorkgroups(Math.ceil(pc.num_points / C.histogram_wg_size));
     
@@ -185,14 +194,39 @@ export default function get_renderer(
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
 
+      encoder.copyBufferToBuffer(
+        nulling_buffer, 
+        0,
+        sorter.sort_info_buffer, 
+        0,
+        4
+      );
+
+      encoder.copyBufferToBuffer(
+        nulling_buffer, 
+        0,
+        sorter.sort_dispatch_indirect_buffer, 
+        0,
+        4
+      );
+
       preprocess_pass(encoder);
 
       //sorter.sort(encoder);
+
+      encoder.copyBufferToBuffer(
+        sorter.sort_info_buffer, 
+        0,
+        indirect_buffer, 
+        4,
+        4
+      );
 
       gaussian_render_pass(encoder, texture_view);
 
     },
 
     camera_buffer,
+    scaling_buffer
   };
 }
