@@ -38,7 +38,8 @@ export default function get_renderer(
   var last_num_points = pc.num_points;
   const nulling_data = new Uint32Array([0]);
   const f32_size = 4;
-  const splat_size = 3 * f32_size; // x,y,z at f32
+  const splat_size = 3 * f32_size +  // x,y,z at f32
+                     1 * f32_size;   // radius at f32
   const num_points = pc.num_points;
   const guassian_splat_buffer = createBuffer(
     device, 'gaussian splat buffer', 
@@ -165,6 +166,11 @@ export default function get_renderer(
         binding: 1, 
         visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, 
         buffer: { type: 'uniform' }
+      },
+      {
+        binding: 2, 
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, 
+        buffer: { type: 'uniform' }
       }
     ],
   });
@@ -175,6 +181,7 @@ export default function get_renderer(
     entries: [
       {binding: 0, resource: { buffer: guassian_splat_buffer }},
       {binding: 1, resource: { buffer: gs_multiplier_buffer }},
+      {binding: 2, resource: { buffer: camera_buffer }},
     ],
   });
 

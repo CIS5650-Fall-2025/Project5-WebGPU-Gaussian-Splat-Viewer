@@ -41,7 +41,8 @@ struct CameraUniforms {
     proj: mat4x4<f32>,
     proj_inv: mat4x4<f32>,
     viewport: vec2<f32>,
-    focal: vec2<f32>
+    focal: vec2<f32>,
+    fov: vec2<f32>,
 };
 
 struct RenderSettings {
@@ -58,6 +59,7 @@ struct Gaussian {
 struct Splat {
     //TODO: store information for 2D splat rendering
     screen_pos: vec3<f32>,
+    radius: f32,
 };
 
 //TODO: bind your data here
@@ -112,6 +114,109 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
     return  max(vec3<f32>(0.), result);
 }
 
+fn get_rot_matrix(rot: array<u32,2>) -> mat3x3<f32> {
+    let rot_xy = unpack2x16float(rot[0]);
+    let rot_zr = unpack2x16float(rot[1]);
+    let rot_vec4 = vec4<f32>(rot_xy.x, rot_xy.y, rot_zr.x, rot_zr.y);
+    
+    // Normalize quaternion
+    let q = rot_vec4; // no need to normalize ? 
+    let r = q.x;
+    let x = q.y;
+    let y = q.z;
+    let z = q.w;
+
+    // Convert quaternion to rotation matrix
+    return mat3x3<f32>(
+        1.0 - 2.0 * (y * y + z * z),  2.0 * (x * y - z * r),      2.0 * (x * z + y * r),
+        2.0 * (x * y + z * r),        1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z - x * r),
+        2.0 * (x * z - y * r),        2.0 * (y * z + x * r),      1.0 - 2.0 * (x * x + y * y)
+    );
+}
+
+fn get_scale_matrix(scale: array<u32,2>, local_gs_multiplier: f32) -> mat3x3<f32> {
+    let scale_xy = unpack2x16float(scale[0]);
+    let scale_z_ = unpack2x16float(scale[1]);
+    let scale_vec3 = vec3<f32>(scale_xy.x, scale_xy.y, scale_z_.x);
+    return mat3x3<f32>(
+        scale_vec3.x * local_gs_multiplier, 0.0, 0.0,
+        0.0, scale_vec3.y * local_gs_multiplier, 0.0,
+        0.0, 0.0, scale_vec3.z * local_gs_multiplier
+    );
+}
+
+fn compute_cov_3d(
+    R: mat3x3<f32>,
+    S: mat3x3<f32>
+) -> array<f32, 6> {
+    let cov_3d_mat = R * S * transpose(S) * transpose(R);
+    return array<f32, 6>(
+        cov_3d_mat[0][0], cov_3d_mat[0][1], cov_3d_mat[0][2],
+        cov_3d_mat[1][1], cov_3d_mat[1][2], cov_3d_mat[2][2]
+    );
+}
+
+fn compute_cov_2d(
+    pos: vec3<f32>,
+    focal: vec2<f32>,
+    viewport: vec2<f32>,
+    view_matrix: mat4x4<f32>,
+    cov_3d: array<f32, 6>
+) -> vec3<f32> {
+    // Transform point to view space
+    let t = (view_matrix * vec4<f32>(pos, 1.0)).xyz;
+    
+    // Compute tangent of FoV
+    let tan_fovx = tan(camera.fov.x * 0.5);
+    let tan_fovy = tan(camera.fov.y * 0.5);
+    
+    // Clamp position to viewing cone
+    let limx = 1.3 * tan_fovx;
+    let limy = 1.3 * tan_fovy;
+    let txtz = t.x / t.z;
+    let tytz = t.y / t.z;
+    let transformed = vec3<f32>(
+        min(limx, max(-limx, txtz)) * t.z,
+        min(limy, max(-limy, tytz)) * t.z,
+        t.z
+    );
+    
+    // Compute Jacobian of perspective projection
+    let J = mat3x3<f32>(
+        focal.x / transformed.z, 0.0, -(focal.x * transformed.x) / (transformed.z * transformed.z),
+        0.0, focal.y / transformed.z, -(focal.y * transformed.y) / (transformed.z * transformed.z),
+        0.0, 0.0, 0.0
+    );
+    
+    // Extract view rotation matrix
+    let W = mat3x3<f32>(
+        view_matrix[0].xyz,
+        view_matrix[1].xyz,
+        view_matrix[2].xyz
+    );
+    
+    // Compute transformation matrix
+    let T = W * J;
+    let VrK = mat3x3<f32>(
+        cov_3d[0], cov_3d[1], cov_3d[2],
+        cov_3d[1], cov_3d[3], cov_3d[4],
+        cov_3d[2], cov_3d[4], cov_3d[5]
+    );
+    
+    // Project covariance to 2D
+    let cov = transpose(T) * VrK * T;
+    
+    // Apply low-pass filter (minimum pixel size)
+    let cov_2d = vec3<f32>(
+        cov[0][0] + 0.3,
+        cov[0][1],
+        cov[1][1] + 0.3
+    );
+    
+    // Return upper triangular part (xx, xy, yy)
+    return cov_2d;
+}
+
 @compute @workgroup_size(workgroupSize,1,1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
@@ -123,15 +228,46 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let global_pos = vec3<f32>(pos_xy.x, pos_xy.y, pos_za.x);
     let unhomogenized_screen_pos = camera.proj * camera.view * vec4<f32>(global_pos, 1.0);
     let homogenized_screen_pos = unhomogenized_screen_pos.xyz / unhomogenized_screen_pos.w;
+    let pixel_pos = vec2<f32>(homogenized_screen_pos.x * 0.5 + 0.5, 
+                              homogenized_screen_pos.y * 0.5 + 0.5); // uv center
+                              
+    var this_splat_index = 0u;
 
     // check if the quad is valid
     if (homogenized_screen_pos.x > -1.2 && homogenized_screen_pos.x < 1.2 &&
         homogenized_screen_pos.y > -1.2 && homogenized_screen_pos.y < 1.2) {
-        // store pos
-        splats[atomicAdd(&sort_infos.keys_size, 1u)].screen_pos = homogenized_screen_pos;
+        this_splat_index = atomicAdd(&sort_infos.keys_size, 1u);
     }else{
         return;
     }
+    // store pos
+    // compute 3d covariance matrix
+    let R = get_rot_matrix(gaussians[idx].rot);
+    let S = get_scale_matrix(gaussians[idx].scale, gs_multiplier);
+    let cov_3d: array<f32, 6> = compute_cov_3d(R, S);
+    // compute 2d covariance matrix
+    let cov_2d: vec3<f32> = compute_cov_2d(global_pos, camera.focal, camera.viewport, camera.view, cov_3d);
+    // compute conic
+    let det = cov_2d.x * cov_2d.z - cov_2d.y * cov_2d.y;
+    if (det == 0.0) {
+        return;
+    }
+    let dev_inv = 1.0 / det;
+    let conic = vec3<f32>(cov_2d.z, -cov_2d.y, cov_2d.x) * dev_inv;
+    // find quad's radius
+    let mid = 0.5 * (cov_2d.x + cov_2d.z);
+    let lambda1 = mid + sqrt(max(0.1, mid * mid - det));
+    let lambda2 = mid - sqrt(max(0.1, mid * mid - det));
+    let radius = ceil(3.0 * sqrt(max(lambda1, lambda2)));
+    // find uv
+
+    // find clamped quad bounds
+
+    // store pos, radius & uv
+    splats[this_splat_index].screen_pos = homogenized_screen_pos;
+    splats[this_splat_index].radius = radius / 100.0;
+    // compute color
+
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
 }

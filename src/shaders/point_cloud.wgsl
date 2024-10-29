@@ -4,7 +4,8 @@ struct CameraUniforms {
     proj: mat4x4<f32>,
     proj_inv: mat4x4<f32>,
     viewport: vec2<f32>,
-    focal: vec2<f32>
+    focal: vec2<f32>,
+    fov: vec2<f32>,
 };
 
 struct Gaussian {

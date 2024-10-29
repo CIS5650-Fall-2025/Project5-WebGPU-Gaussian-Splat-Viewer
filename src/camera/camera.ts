@@ -95,7 +95,7 @@ export async function load_camera_presets(file: string): Promise<CameraPreset[]>
 
 const c_size_vec2 = 4 * 2;
 const c_size_mat4 = 4 * 16; // byte size of mat4 (i.e. Float32Array(16))
-const c_size_camera_uniform = 4 * c_size_mat4 + 2 * c_size_vec2;
+const c_size_camera_uniform = 4 * c_size_mat4 + 2 * c_size_vec2 + 2 * c_size_vec2;
 interface CameraUniform {
   view_matrix: Mat4,
   view_inv_matrix: Mat4,
@@ -104,6 +104,7 @@ interface CameraUniform {
 
   viewport: Vec2,
   focal: Vec2,
+  fov: Vec2,
 }
 
 export function create_camera_uniform_buffer(device: GPUDevice) {
@@ -179,6 +180,11 @@ export class Camera {
     intermediate_float_32_array.set(this.focal, offset);
     offset += 2;
 
+    let fov_array = new Float32Array(2);
+    fov_array[0] = this.fovX;
+    fov_array[1] = this.fovY;
+    intermediate_float_32_array.set(fov_array, offset);
+    offset += 2;
     this.device.queue.writeBuffer(this.uniform_buffer, 0, intermediate_float_32_array);
   }
   set_preset(preset: CameraPreset): void {

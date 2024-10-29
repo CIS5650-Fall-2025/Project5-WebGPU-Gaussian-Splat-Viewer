@@ -1,28 +1,40 @@
+struct CameraUniforms {
+    view: mat4x4<f32>,
+    view_inv: mat4x4<f32>,
+    proj: mat4x4<f32>,
+    proj_inv: mat4x4<f32>,
+    viewport: vec2<f32>,
+    focal: vec2<f32>,
+    fov: vec2<f32>,
+};
+
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     //TODO: information passed from vertex shader to fragment shader
 };
 
 struct Splat {
-    //TODO: information defined in preprocess compute shader
+    //TODO: store information for 2D splat rendering
     screen_pos: vec3<f32>,
+    radius: f32,
 };
 
 @group(0) @binding(0) var<storage, read> splats: array<Splat>;
 @group(0) @binding(1) var<uniform> gs_multiplier: f32;
+@group(0) @binding(2) var<uniform> camera: CameraUniforms;
 @vertex
 fn vs_main(
     @builtin(vertex_index) vertex_index: u32,
     @builtin(instance_index) instance_index: u32,
 ) -> VertexOutput {
-    let base_scale = 0.005 * gs_multiplier;
+    let base_scale = splats[instance_index].radius;
     let quad_offsets = array<vec2<f32>, 6>(
-        vec2<f32>(-base_scale, -base_scale),  // First triangle
-        vec2<f32>( base_scale, -base_scale),
-        vec2<f32>( base_scale,  base_scale),
-        vec2<f32>(-base_scale, -base_scale),  // Second triangle
-        vec2<f32>( base_scale,  base_scale),
-        vec2<f32>(-base_scale,  base_scale),
+        vec2<f32>(-base_scale / camera.viewport.x, -base_scale / camera.viewport.y),  // First triangle
+        vec2<f32>( base_scale / camera.viewport.x, -base_scale / camera.viewport.y),
+        vec2<f32>( base_scale / camera.viewport.x,  base_scale / camera.viewport.y),
+        vec2<f32>(-base_scale / camera.viewport.x, -base_scale / camera.viewport.y),  // Second triangle
+        vec2<f32>( base_scale / camera.viewport.x,  base_scale / camera.viewport.y),
+        vec2<f32>(-base_scale / camera.viewport.x,  base_scale / camera.viewport.y),
     );
     let quad_center = splats[instance_index].screen_pos;
 
