@@ -63,7 +63,6 @@ struct Splat {
     packed_conic_opacity: array<u32, 2>
 };
 
-//TODO: bind your data here
 @group(0) @binding(0)
 var<uniform> camera: CameraUniforms;
 @group(0) @binding(1)
@@ -88,7 +87,6 @@ var<storage, read> sh: array<u32>;
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
-    //TODO: access your binded sh_coeff, see load.ts for how it is stored
     // maximum 16 sh coefficients per splat, which is 16*3 = 48 f16s = 48 * 2 = 96 bytes
     // since we are encoding them as u32s, we need 24 u32s = 24 * 4 = 96 bytes.
     let parity = c_idx % 2;

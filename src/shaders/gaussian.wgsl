@@ -1,6 +1,5 @@
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
-    //TODO: information passed from vertex shader to fragment shader
 
     @location(0) color: vec4f,
     @location(1) conic: vec3f,
