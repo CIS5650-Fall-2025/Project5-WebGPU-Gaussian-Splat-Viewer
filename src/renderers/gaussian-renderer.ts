@@ -43,7 +43,7 @@ export default function get_renderer(
     vec2.create(1.0, pc.sh_deg)
   );
 
-  const SPLAT_SIZE = 16;
+  const SPLAT_SIZE = 32;
   const splat_buffer = createBuffer(
     device,
     "splat buffer",
@@ -119,7 +119,8 @@ export default function get_renderer(
     label: 'splat bind group',
     layout: preprocess_pipeline.getBindGroupLayout(3),
     entries: [
-      { binding: 0, resource: { buffer: splat_buffer } }
+      { binding: 0, resource: { buffer: splat_buffer } },
+      { binding: 1, resource: { buffer: pc.sh_buffer } }
     ]
   })
 
@@ -138,7 +139,23 @@ export default function get_renderer(
     fragment: {
       module: render_shader,
       entryPoint: 'fs_main',
-      targets: [{ format: presentation_format }],
+      targets: [
+        {
+          format: presentation_format,
+          blend: {
+            color: {
+              srcFactor: "one",
+              dstFactor: "one-minus-src-alpha",
+              operation: "add"
+            },
+            alpha: {
+              srcFactor: "one",
+              dstFactor: "one-minus-src-alpha",
+              operation: "add"
+            }
+          }
+        }
+      ],
     },
   });
 
@@ -147,7 +164,8 @@ export default function get_renderer(
     layout: render_pipeline.getBindGroupLayout(0),
     entries: [
       { binding: 0, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer }},
-      { binding: 1, resource: { buffer: splat_buffer }}
+      { binding: 1, resource: { buffer: splat_buffer }},
+      { binding: 2, resource: { buffer: camera_buffer }}
     ]
   })
 
@@ -182,7 +200,6 @@ export default function get_renderer(
       ],
     });
     pass.setPipeline(render_pipeline);
-    // pass.setBindGroup(0, camera_bind_group);
     pass.setBindGroup(0, render_bind_group);
     pass.drawIndirect(indirect_buffer, 0);
     pass.end();
@@ -194,7 +211,7 @@ export default function get_renderer(
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
       preprocess(encoder);
-      // sorter.sort(encoder);
+      sorter.sort(encoder);
       render(encoder, texture_view);
     },
     camera_buffer,
