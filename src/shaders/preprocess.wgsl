@@ -57,9 +57,30 @@ struct Gaussian {
 
 struct Splat {
     //TODO: store information for 2D splat rendering
+    position: vec2<f32>, 
+    size: f32,          
+    color: vec3<f32>, 
 };
 
 //TODO: bind your data here
+@group(0) @binding(0)
+var<storage, read_write> splatBuffer: array<Splat>;
+
+@group(0) @binding(1)
+var<storage, read> sh_buffer: array<vec3<f32>>;
+
+@group(0) @binding(2)
+var<storage, read> gaussian3d_buffer: array<Gaussian>;
+
+
+@group(1) @binding(0)
+var<uniform> camera: CameraUniforms;
+
+@group(1) @binding(1)
+var<uniform> renderSettings: RenderSettings;
+
+
+
 @group(2) @binding(0)
 var<storage, read_write> sort_infos: SortInfos;
 @group(2) @binding(1)
@@ -72,7 +93,7 @@ var<storage, read_write> sort_dispatch: DispatchIndirect;
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
     //TODO: access your binded sh_coeff, see load.ts for how it is stored
-    return vec3<f32>(0.0);
+   return vec3<f32>(1.0);
 }
 
 // spherical harmonics evaluation with Condon–Shortley phase
@@ -113,6 +134,26 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let idx = gid.x;
     //TODO: set up pipeline as described in instruction
 
+    if(idx >= arrayLength(&gaussian3d_buffer)){
+        return;
+    }
+
+    let gaussian = gaussian3d_buffer[idx];
+    let xy = unpack2x16float(gaussian.pos_opacity[0]);
+    let z = unpack2x16float(gaussian.pos_opacity[1]);
+    let xyz = vec3<f32>(xy, z.x);
+    let alpha = z.y;
+
+    var positionNDC = camera.proj * camera.view * vec4<f32>(xyz, 1.0);
+    positionNDC/=positionNDC.w;
+    let boundary  = 1.2f;
+
+    if(positionNDC.x < -boundary || positionNDC.x> boundary ||positionNDC.y < -boundary || positionNDC.y > boundary 
+    || positionNDC.z < 0.0 || positionNDC.z > 1.0){
+        return;
+    }
+
+    splat[idx].position = positionNDC.xy;
+
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
-}
