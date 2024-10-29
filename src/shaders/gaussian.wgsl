@@ -62,10 +62,15 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     var pos_ndc = 2.0 * (input.position.xy / camera.viewport) - vec2(1.0, 1.0);
     pos_ndc.y = -pos_ndc.y;
 
-    var exponent = 
-        input.conic.x * pos_ndc.x * pos_ndc.x
-        + input.conic.z * pos_ndc.y * pos_ndc.y
-        + input.conic.y * pos_ndc.x * pos_ndc.y;
+    // Screen-space offset from the fragment position, with x-coordinate reversed.
+    var offset_screen = pos_ndc - input.mean;
+    offset_screen.x = -offset_screen.x;
+    offset_screen *= camera.viewport * 0.5;
 
-    return vec4<f32>(in.color.rgb, in.color.a) * exp(-exponent/2.0);
+    var exponent = 
+        input.conic.x * offset_screen.x * offset_screen.x
+        + input.conic.z * offset_screen.y * offset_screen.y
+        + input.conic.y * offset_screen.x * offset_screen.y;
+
+    return vec4f(input.rgb_opacity.xyz, 1.0) * input.rgb_opacity.w * exp(-exponent/2.0);
 }
