@@ -44,11 +44,6 @@ struct CameraUniforms {
     focal: vec2<f32>
 };
 
-struct RenderSettings {
-    gaussian_scaling: f32,
-    sh_deg: f32,
-}
-
 struct Gaussian {
     pos_opacity: array<u32,2>,
     rot: array<u32,2>,
@@ -223,14 +218,27 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 
     let sca_a = unpack2x16float(vertex.scale[0]);
     let sca_b = unpack2x16float(vertex.scale[1]);
-    let scale = vec3f(sca_a.x, sca_a.y, sca_b.x);
+    let scale = exp(vec3f(sca_a.x, sca_a.y, sca_b.x));
     
     let cov3D = computeCov3D(scale, scaling, rot);
+    let cov = computeCov2D(
+        pos_world, 
+        camera.focal.x, camera.focal.y, 
+        camera.viewport.x / (2.f * camera.focal.x), camera.viewport.y / (2.f * camera.focal.y),
+        cov3D, camera.view);
+    let det = (cov.x * cov.z - cov.y * cov.y);
 
-    let cov2D = computeCov2D(pos_world, 
-                             camera.focal.x, camera.focal.y, 
-                             camera.viewport.x / (2.f * camera.focal.x), camera.viewport.y / (2.f * camera.focal.y),
-                             cov3D, camera.view);
+    if (det < 0.000001f) {
+        return;
+    }
+
+    let det_inv = 1.0f / det;
+    let conic = vec3f(cov.z * det_inv, -cov.y * det_inv, cov.x * det_inv);
+
+    let mid = 0.5f * (cov.x + cov.z);
+    let lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
+    let lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
+    let radius = ceil(3.f * sqrt(max(lambda1, lambda2)));
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
@@ -243,7 +251,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let index = atomicAdd(&sort_infos.keys_size, 1u);
 
     let xy = pack2x16float(pos_ndc.xy);
-    let wh = pack2x16float(vec2f(0.005f, 0.005f) * scaling);
+    let wh = pack2x16float((vec2f(radius, radius) / camera.viewport) * scaling);
     splats[index].xy = xy;
     splats[index].wh = wh;
 }
