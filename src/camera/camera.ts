@@ -76,7 +76,7 @@ export async function load_camera_presets(file: File): Promise<CameraPreset[]> {
     reader.onerror = reject;  // Reject the promise in case of an error
     reader.readAsArrayBuffer(blob);
   });
-  const text = new TextDecoder().decode(arrayBuffer);
+  const text = new TextDecoder().decode(arrayBuffer as ArrayBuffer);
   const json = JSON.parse(text);
   log(`loaded cameras count: ${json.length}`);
 
