@@ -61,45 +61,9 @@ export default function get_renderer(
   // ===============================================
   //    Create Compute Pipeline and Bind Groups
   // ===============================================
-  const preprocess_sort_bind_group_layout = device.createBindGroupLayout({
-    entries: [
-      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-    ],
-  });
-
-  const preprocess_scene_bind_group_layout = device.createBindGroupLayout({
-    entries: [
-      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-    ]
-  });
-
-  const preprocess_gaussian_bind_group_layout = device.createBindGroupLayout({
-    entries: [
-      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-    ],
-  });
-
-  const preprocess_splats_bind_group_layout = device.createBindGroupLayout({
-    entries: [
-      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-    ],
-  });
-
   const preprocess_pipeline = device.createComputePipeline({
     label: 'preprocess',
-    layout: device.createPipelineLayout({
-      bindGroupLayouts: [
-        preprocess_sort_bind_group_layout,
-        preprocess_scene_bind_group_layout,
-        preprocess_gaussian_bind_group_layout,
-        preprocess_splats_bind_group_layout,
-      ],
-    }),
+    layout: 'auto',
     compute: {
       module: device.createShaderModule({ code: preprocessWGSL }),
       entryPoint: 'preprocess',
@@ -110,40 +74,19 @@ export default function get_renderer(
     },
   });
 
-  const sort_bind_group = device.createBindGroup({
+  const preprocess_bind_group = device.createBindGroup({
     label: 'sort',
-    layout: preprocess_sort_bind_group_layout,
+    layout: preprocess_pipeline.getBindGroupLayout(0),
     entries: [
       { binding: 0, resource: { buffer: sorter.sort_info_buffer } },
       { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_depths_buffer } },
       { binding: 2, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
       { binding: 3, resource: { buffer: sorter.sort_dispatch_indirect_buffer } },
-    ],
-  });
-
-  const preprocess_scene_bind_group = device.createBindGroup({
-    label: 'scene',
-    layout: preprocess_scene_bind_group_layout,
-    entries: [
-      { binding: 0, resource: { buffer: camera_buffer } },
-    ],
-  });
-
-  const preprocess_gaussian_bind_group = device.createBindGroup({
-    label: 'gaussian',
-    layout: preprocess_gaussian_bind_group_layout,
-    entries: [
-      { binding: 0, resource: { buffer: pc.gaussian_3d_buffer } },
-    ],
-  });
-
-  const preprocess_splats_bind_group = device.createBindGroup({
-    label: 'splats',
-    layout: preprocess_splats_bind_group_layout,
-    entries: [
-      { binding: 0, resource: { buffer: splatBuffer } },
-      { binding: 1, resource: { buffer: render_settings_buffer } },
-      { binding: 2, resource: { buffer: pc.sh_buffer } },
+      { binding: 4, resource: { buffer: camera_buffer } },
+      { binding: 5, resource: { buffer: pc.gaussian_3d_buffer } },
+      { binding: 6, resource: { buffer: splatBuffer } },
+      { binding: 7, resource: { buffer: render_settings_buffer } },
+      { binding: 8, resource: { buffer: pc.sh_buffer } },
     ],
   });
 
@@ -207,10 +150,7 @@ export default function get_renderer(
   const preprocess = (encoder: GPUCommandEncoder) => {
     const pass = encoder.beginComputePass();
     pass.setPipeline(preprocess_pipeline);
-    pass.setBindGroup(0, sort_bind_group);
-    pass.setBindGroup(1, preprocess_scene_bind_group);
-    pass.setBindGroup(2, preprocess_gaussian_bind_group);
-    pass.setBindGroup(3, preprocess_splats_bind_group);
+    pass.setBindGroup(0, preprocess_bind_group);
     pass.dispatchWorkgroups(Math.ceil(pc.num_points / C.histogram_wg_size), 1, 1);
     pass.end();
   }

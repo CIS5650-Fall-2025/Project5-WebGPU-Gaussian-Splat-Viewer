@@ -70,20 +70,15 @@ var<storage, read_write> sort_depths : array<u32>;
 var<storage, read_write> sort_indices : array<u32>;
 @group(0) @binding(3)
 var<storage, read_write> sort_dispatch: DispatchIndirect;
-
-@group(1) @binding(0)
+@group(0) @binding(4)
 var<uniform> camera: CameraUniforms;
-
-@group(2) @binding(0)
+@group(0) @binding(5)
 var<storage, read> gaussians: array<Gaussian>;
-
-@group(3) @binding(0)
+@group(0) @binding(6)
 var<storage, read_write> splats: array<Splat>;
-
-@group(3) @binding(1)
+@group(0) @binding(7)
 var<uniform> render_settings: RenderSettings;
-
-@group(3) @binding(2)
+@group(0) @binding(8)
 var<storage, read> colors: array<u32>;
 
 /// reads the ith sh coef from the storage buffer 
