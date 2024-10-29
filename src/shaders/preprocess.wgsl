@@ -57,7 +57,8 @@ struct Gaussian {
 
 struct Splat {
     //TODO: store information for 2D splat rendering
-    xy: u32
+    xy: u32,
+    wh: u32
 };
 
 //TODO: bind your data here
@@ -79,6 +80,8 @@ var<storage, read_write> sort_dispatch: DispatchIndirect;
 
 @group(3) @binding(0)
 var<storage, read_write> splats: array<Splat>;
+@group(3) @binding(1)
+var<uniform> scaling: f32;
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
@@ -119,6 +122,77 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
     return  max(vec3<f32>(0.), result);
 }
 
+fn quatToRotationMatrix(rot: vec4f) -> mat3x3f {
+    let r = rot.x;
+    let x = rot.y;
+    let y = rot.z;
+    let z = rot.w;
+
+    return mat3x3f(
+        vec3f(1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y - r * z), 2.0 * (x * z + r * y)),
+        vec3f(2.0 * (x * y + r * z), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z - r * x)),
+        vec3f(2.0 * (x * z - r * y), 2.0 * (y * z + r * x), 1.0 - 2.0 * (x * x + y * y))
+    );
+}
+
+fn computeCov3D(scale: vec3f, scaling: f32, rot: vec4f) -> array<f32, 6> {
+    let S = mat3x3f(
+        vec3f(scaling * scale.x, 0.0, 0.0),
+        vec3f(0.0, scaling * scale.y, 0.0),
+        vec3f(0.0, 0.0, scaling * scale.z)
+    );
+
+    let R = quatToRotationMatrix(rot);
+
+    let M = S * R;
+
+    let Sigma = transpose(M) * M;
+
+    var cov3D: array<f32, 6>;
+    cov3D[0] = Sigma[0][0];
+    cov3D[1] = Sigma[0][1];
+    cov3D[2] = Sigma[0][2];
+    cov3D[3] = Sigma[1][1];
+    cov3D[4] = Sigma[1][2];
+    cov3D[5] = Sigma[2][2];
+
+    return cov3D;
+}
+
+fn computeCov2D(pos: vec4f, focal_x: f32, focal_y: f32, tan_fovx: f32, tan_fovy: f32, cov3D: array<f32, 6>, view: mat4x4f) -> vec3f {
+    var t = (view * pos).xyz;
+
+    let limx = 1.3f * tan_fovx;
+    let limy = 1.3f * tan_fovy;
+    let txtz = t.x / t.z;
+    let tytz = t.y / t.z;
+    t.x = min(limx, max(-limx, txtz)) * t.z;
+    t.y = min(limy, max(-limy, tytz)) * t.z;
+
+    let J = mat3x3f(
+        vec3f(focal_x / t.z, 0.0, -(focal_x * t.x) / (t.z * t.z)),
+        vec3f(0.0, focal_y / t.z, -(focal_y * t.y) / (t.z * t.z)),
+        vec3f(0.0, 0.0, 0.0)
+    );
+
+    let W = transpose(mat3x3f(view[0].xyz, view[1].xyz, view[2].xyz));
+
+    let T = W * J;
+
+    let Vrk = mat3x3f(
+        vec3f(cov3D[0], cov3D[1], cov3D[2]),
+        vec3f(cov3D[1], cov3D[3], cov3D[4]),
+        vec3f(cov3D[2], cov3D[4], cov3D[5])
+    );
+
+    var cov = transpose(T) * transpose(Vrk) * T;
+
+    cov[0][0] += 0.3f;
+	cov[1][1] += 0.3f;
+
+    return vec3f(cov[0][0], cov[0][1], cov[1][1]);
+}
+
 @compute @workgroup_size(workgroupSize,1,1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
 
@@ -141,7 +215,22 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         pos_ndc.y < -1.2f || pos_ndc.y > 1.2f ||
         pos_ndc.z < 0.00f || pos_ndc.z > 1.0f) {
         return;
-    } 
+    }
+
+    let rot_a = unpack2x16float(vertex.rot[0]);
+    let rot_b = unpack2x16float(vertex.rot[1]);
+    let rot = vec4f(rot_a.x, rot_a.y, rot_b.x, rot_b.y);
+
+    let sca_a = unpack2x16float(vertex.scale[0]);
+    let sca_b = unpack2x16float(vertex.scale[1]);
+    let scale = vec3f(sca_a.x, sca_a.y, sca_b.x);
+    
+    let cov3D = computeCov3D(scale, scaling, rot);
+
+    let cov2D = computeCov2D(pos_world, 
+                             camera.focal.x, camera.focal.y, 
+                             camera.viewport.x / (2.f * camera.focal.x), camera.viewport.y / (2.f * camera.focal.y),
+                             cov3D, camera.view);
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
@@ -154,5 +243,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let index = atomicAdd(&sort_infos.keys_size, 1u);
 
     let xy = pack2x16float(pos_ndc.xy);
+    let wh = pack2x16float(vec2f(0.005f, 0.005f) * scaling);
     splats[index].xy = xy;
+    splats[index].wh = wh;
 }

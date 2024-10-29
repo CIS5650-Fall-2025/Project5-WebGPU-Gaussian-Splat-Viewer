@@ -52,7 +52,7 @@ export default function get_renderer(
     nulling_data
   );
 
-  const splat_size = 4;
+  const splat_size = 8;
 
   const splat_buffer = createBuffer(
     device, 
@@ -118,7 +118,8 @@ export default function get_renderer(
     label: 'preprocess splat bind group',
     layout: preprocess_pipeline.getBindGroupLayout(3),
     entries: [
-      { binding: 0, resource: { buffer: splat_buffer } }
+      { binding: 0, resource: { buffer: splat_buffer } },
+      { binding: 1, resource: { buffer: scaling_buffer }}
     ]
   });
 
@@ -144,8 +145,7 @@ export default function get_renderer(
     label: 'gaussian render splat bind group',
     layout: gaussian_render_pipeline.getBindGroupLayout(0),
     entries: [
-      { binding: 0, resource: { buffer: splat_buffer } },
-      { binding: 1, resource: { buffer: scaling_buffer }}
+      { binding: 0, resource: { buffer: splat_buffer } }
     ]
   });
 
