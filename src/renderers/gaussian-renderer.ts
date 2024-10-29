@@ -6,7 +6,7 @@ import { Renderer } from './renderer';
 import { encode } from '@loaders.gl/core';
 
 export interface GaussianRenderer extends Renderer {
-
+    renderSettingBuffer:GPUBuffer;
 }
 
 // Utility to create GPU buffers
@@ -34,28 +34,9 @@ export default function get_renderer(
   // ===============================================
   //            Initialize GPU Buffers
   // ===============================================
-  const quadVertexData = new Float32Array([
-    // Positions (X, Y)
-    -0.5, -0.5,  // Bottom-left
-     0.5, -0.5,  // Bottom-right
-    -0.5,  0.5,  // Top-left
-     0.5, -0.5,  // Bottom-right
-     0.5,  0.5,  // Top-right
-    -0.5,  0.5,  // Top-left
-  ]);
+ 
 
-  const quadVertexBuffer = device.createBuffer({
-    label: 'Quad Vertex Buffer',
-    size: quadVertexData.byteLength,
-    usage: GPUBufferUsage.VERTEX,
-    mappedAtCreation: true,
-  });
   
-  new Float32Array(quadVertexBuffer.getMappedRange()).set(quadVertexData);
-  quadVertexBuffer.unmap();
-
-
-  const nulling_data = new Uint32Array([0]);
 
 
   const indirectdraw_buffersize = 4 * Uint32Array.BYTES_PER_ELEMENT;
@@ -65,11 +46,21 @@ export default function get_renderer(
     usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   })
 
-  const indirectdraw_host = new Uint32Array([6, pc.num_points, 0, 0]);
-
-
+  
+  const indirectdraw_host = new Uint32Array([6, 0, 0, 0]);
   device.queue.writeBuffer(indirectdraw_buffer, 0, indirectdraw_host.buffer);
 
+
+  const nulling_data = new Uint32Array([0]);
+  const nulling_buffer = device.createBuffer({
+    label: "indirect draw reset null buffer",
+    size: indirectdraw_buffersize,
+    usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
+  })
+
+  device.queue.writeBuffer(nulling_buffer, 0, nulling_data.buffer);
+
+  
   const splatData = new Float32Array(pc.num_points * 8);
 
 
@@ -77,8 +68,7 @@ export default function get_renderer(
     device,
     'Splat Buffer',
     splatData.byteLength,
-    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    null
+    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX,
   );
 
   const renderSettingsData = new Float32Array([1.0, pc.sh_deg]);
@@ -119,7 +109,7 @@ export default function get_renderer(
   });
 
   const compute_setting_BindGroup = device.createBindGroup({
-    label: 'Compute Bind Group',
+    label: 'Compute setting Bind Group',
     layout: preprocess_pipeline.getBindGroupLayout(1),
     entries: [
       { binding: 0, resource: { buffer: camera_buffer } }, 
@@ -152,16 +142,7 @@ export default function get_renderer(
             code: renderWGSL,
         }),
         entryPoint: "vs_main",
-        buffers: [{
-          arrayStride: 2 * Float32Array.BYTES_PER_ELEMENT,
-          stepMode: "vertex",
-          attributes:[{
-            shaderLocation:0,
-            offset:0,
-            format: 'float32x2'
-
-          }],
-        }],
+        buffers: [],
     },
     fragment: {
         module: device.createShaderModule({
@@ -191,6 +172,10 @@ export default function get_renderer(
   // ===============================================
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
+
+      encoder.copyBufferToBuffer(nulling_buffer, 0, sorter.sort_info_buffer, 0, 4)
+
+
       const computePass = encoder.beginComputePass({
         label: "Compute Pass",
       });
@@ -208,6 +193,8 @@ export default function get_renderer(
 
       computePass.end();
 
+      encoder.copyBufferToBuffer(sorter.sort_info_buffer, 0, indirectdraw_buffer, 4, 4)
+
       sorter.sort(encoder);
 
 
@@ -223,10 +210,11 @@ export default function get_renderer(
       render_pass.setPipeline(renderPipeline);
      
       render_pass.setBindGroup(0, splatBindGroup);
-      render_pass.setVertexBuffer(0, quadVertexBuffer);
+      render_pass.setVertexBuffer(0, splatBuffer);
       render_pass.drawIndirect(indirectdraw_buffer, 0);
       render_pass.end();
     },
     camera_buffer,
+    renderSettingBuffer,
   };
 }

@@ -1,8 +1,12 @@
 
-struct VertexInput {
-    
-    @builtin(instance_index) instanceIndex: u32,
-};
+const quad_verts = array<vec2<f32>, 6>(
+    vec2<f32>(-0.01, -0.01),  // Bottom-left
+    vec2<f32>(0.01, -0.01),  // Bottom-right
+    vec2<f32>(-0.01,  0.01),  // Top-left
+    vec2<f32>(0.01, -0.01),  // Bottom-right
+    vec2<f32>( 0.01,  0.01),  // Top-right
+    vec2<f32>(-0.01,  0.01),  // Top-left
+    );
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -24,16 +28,22 @@ struct Splat {
 
 
 @vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
+fn vs_main(
+    @builtin(instance_index) instanceIndex: u32,
+    @builtin(vertex_index) vert_idx : u32,) -> VertexOutput {
     var out: VertexOutput;
 
-    let splat = splats[in.instanceIndex];
-    let size = splat.size;
- 
+    var splat = splats[instanceIndex];
+    //let size = splat.size;
+
+    let offset = quad_verts[vert_idx];
+    splat.position = vec2<f32>(splat.position.x + offset.x, splat.position.y + offset.y);
+
+    out.position = vec4<f32>(splat.position, 0.0, 1.0);
     return out;
 }
 
 @fragment
 fn fs_main() -> @location(0) vec4<f32> {
-    return vec4<f32>( 1.0);
+    return vec4<f32>(1.0);
 }

@@ -153,7 +153,45 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         return;
     }
 
-    splat[idx].position = positionNDC.xy;
+    //calculatin of  3D covariance
+    let quatWX = unpack2x16float(gaussian.rot[0]);
+    let quatYZ = unpack2x16float(gaussian.rot[1]);
+    let scaleXY = unpack2x16float(gaussian.scale[0]);
+    let scaleZ = unpack2x16float(gaussian.scale[1]);
+    let scale = vec3<f32>(
+        renderSettings.gaussian_scaling * scaleXY.x, 
+        renderSettings.gaussian_scaling * scaleXY.y, 
+        renderSettings.gaussian_scaling * scaleZ.x);
+
+
+    let rotationMatrix = mat3x3<f32>(
+        1.0f - 2.0f * (quatYZ.x * quatYZ.x + quatYZ.y * quatYZ.y), 2.0f * (quatWX.y * quatYZ.x - quatWX.x * quatYZ.y), 2.0f * (quatWX.y * quatYZ.y + quatWX.x * quatYZ.x),
+        2.0f * (quatWX.y * quatYZ.x + quatWX.x * quatYZ.y), 1.0f - 2.0f * (quatWX.y * quatWX.y + quatYZ.y * quatYZ.y), 2.0f * (quatYZ.x * quatYZ.y - quatWX.x * quatWX.y),
+        2.0f * (quatWX.y * quatYZ.y - quatWX.x * quatYZ.x), 2.0f * (quatYZ.x * quatYZ.y + quatWX.x * quatWX.y), 1.0f - 2.0f * (quatWX.y * quatWX.y + quatYZ.x * quatYZ.x)
+    );
+
+    let scaleMatrix = mat3x3<f32>(
+        scale.x, 0.0, 0.0,
+        0.0, scale.y, 0.0,
+        0.0, 0.0, scale.z
+    )
+
+    let 3Dcovariance = transpose(scaleMatrix * rotationMatrix) * scaleMatrix * rotationMatrix;
+
+    //testing
+    let testing = sort_infos.padded_size;
+    let testing2 = sh_buffer[0];
+    let render = renderSettings.gaussian_scaling;
+    let testing3 = sort_depths[0];
+    let testing4 = sort_indices[0];
+    let testing5 = sort_dispatch.dispatch_y;
+
+    let index = atomicAdd(&sort_infos.keys_size, 1u);
+    splatBuffer[index].position = positionNDC.xy;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
+    if (index % keys_per_dispatch == 0){
+        atomicAdd(&sort_dispatch.dispatch_x, 1);
+    }
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
+}
