@@ -1,31 +1,37 @@
-# Project5-WebGPU-Gaussian-Splat-Viewer
+**University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 5 - WebGPU Gaussian Splat Viewer**
 
-**University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 4**
+![main](images/main.png)
 
-* (TODO) YOUR NAME HERE
-* Tested on: (TODO) **Google Chrome 222.2** on
-  Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
+* Yin Tang
+  * [Linkedin](https://www.linkedin.com/in/yin-tang-jackeyty/), [Github](https://github.com/JackeyTY), [Personal Website](https://jackeytang.com/)
+* Tested on: Google Chrome 130.0 on Windows 11 Pro, AMD Ryzen 9 7950X @ 5.00GHz 64GB, NVIDIA GeForce RTX 4090 24GB (personal desktop)
 
-### Live Demo
+<br>
 
-[![](img/thumb.png)](http://TODO.github.io/Project4-WebGPU-Forward-Plus-and-Clustered-Deferred)
+### Overview
 
-### Demo Video/GIF
+In this project, I implemented a **3D Gaussian Splat Viewer** using **WebGPU**, which is based on the paper [3D Gaussian Splatting for Real-Time Radiance Field Rendering](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/). Online interactive [demo](https://www.jackeytang.com/WebGPU-Gaussian-Splat-Viewer/), remember to download scene files first. 
 
-[![](img/video.mp4)](TODO)
+**Gaussian Splatting** is a novel technique in computer graphics and neural rendering that represents a scene or object using a collection of 3D Gaussian functions instead of traditional polygonal meshes or voxel grids. Each Gaussian, or "splat," has a position, size, orientation, and opacity, defining a smooth, continuous volume that approximates the underlying surface or appearance. This approach allows for efficient rendering, as the splats can be rasterized quickly, and their smooth nature helps reduce aliasing artifacts. Gaussian splatting is particularly well-suited for applications in real-time rendering, neural radiance fields (NeRFs), and point-based rendering, where it offers a compact and differentiable representation. By leveraging GPU acceleration, it enables high-quality rendering with fewer computational resources, making it a promising alternative for interactive graphics, virtual reality, and dynamic scene representations.
 
-### (TODO: Your README)
+![next](images/next.png)
 
-*DO NOT* leave the README to the last minute! It is a crucial part of the
-project, and we will not be able to grade you without a good README.
+<br>
 
-This assignment has a considerable amount of performance analysis compared
-to implementation work. Complete the implementation early to leave time!
+### Performance Analysis
 
-### Credits
+- **Compare your results from point-cloud and gaussian renderer, what are the differences?**
 
-- [Vite](https://vitejs.dev/)
-- [tweakpane](https://tweakpane.github.io/docs//v3/monitor-bindings/)
-- [stats.js](https://github.com/mrdoob/stats.js)
-- [wgpu-matrix](https://github.com/greggman/wgpu-matrix)
-- Special Thanks to: Shrek Shao (Google WebGPU team) & [Differential Guassian Renderer](https://github.com/graphdeco-inria/diff-gaussian-rasterization)
+​	Point-cloud is much easier to draw since only individual points are rendered, whereas gaussian splats render consists of more computation in the computer and render passes, which takes comparably large amount of time. On the other hand, the quality of the image rendered by the gaussian render is significantly better than that of point-cloud.
+
+- **For gaussian renderer, how does changing the workgroup-size affect performance? Why do you think this is?**
+
+​	Since the maximum total number of invocations per workgroup is 256, we can only decrease the workgroup size in the x-dimension, which results is worse performance since more workgroups need to be dispatched and less utilization.
+
+- **Does view-frustum culling give performance improvement? Why do you think this is?**
+
+​	It does improve the performance by around 5%, which is because we don't need to process out-of-bound splats so less computation and draw calls, but given the size of the scene, it is not evident.
+
+- **Does number of guassians affect performance? Why do you think this is?**
+
+​	As the number of gaussians, which is the upper bound for draw invocations, the performance decreases as more computation and draw calls need to be processed.
