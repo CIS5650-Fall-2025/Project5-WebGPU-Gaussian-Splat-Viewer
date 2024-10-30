@@ -7,6 +7,7 @@
 
 ## Live Demo (requires Chrome and a WebGPU compatible GPU)
 [Demo Link](https://aorus1.github.io/Project5-WebGPU-Gaussian-Splat-Viewer/)
+[Sample Files](https://drive.google.com/drive/folders/1rwtArEbj7GfjMeK6mD3a4QN6ZFLKQoBB?usp=sharing)
 
 ## Demo Video
 
