@@ -8,13 +8,18 @@
 * Tested on: Windows 11, 13th Gen Intel(R) Core(TM) i9-13900HX @ 2.20 GHz, RAM 32GB, NVIDIA GeForce RTX 4060, personal laptop.
 
 
-### Live Demo
+### [Live Demo](carlos-lopez-garces.github.io/Penn-CIS-5650-Project5-WebGPU-Gaussian-Splat-Viewer)
 
-[![](img/thumb.png)](http://TODO.github.io/Project4-WebGPU-Forward-Plus-and-Clustered-Deferred)
+[![](images/bicycle_1.png)](carlos-lopez-garces.github.io/Penn-CIS-5650-Project5-WebGPU-Gaussian-Splat-Viewer)
 
 ### Demo Video/GIF
 
-[![](img/video.mp4)](TODO)
+| Bonsai | Bicycle |
+|----------|----------|
+| ![](images/bonsai_1.gif)   | ![](images/bicycle_1.gif)   |
+| **Truck** | **Train** |
+| ![](images/truck_1.gif)   | ![](images/train_1.gif)   |
+
 
 | Bonsai | Bicycle |
 |----------|----------|
