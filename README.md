@@ -1,6 +1,6 @@
-# Project5-WebGPU-Gaussian-Splat-Viewer
+# WebGPU Gaussian Splat Viewer
 
-**University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 4**
+**University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 5**
 
 * Mufeng Xu
 * Tested on: **Google Chrome 129.0** on
@@ -13,6 +13,17 @@
 ## Demo Video/GIF
 
 ![](images/bonsai.gif)
+
+## Project Overview
+
+Gaussian Splatting is a volume rendering technique that deals with the direct rendering of volume data without converting the data into surface or line primitives. This method uses 3D gaussian distributions to represent objects, with spherical harmonics, the gaussian splats can represent sophisticated colors and details. This project specifically implements a viewer that renders a gaussian splat scene.
+
+**Implemented Functions**
+
+* Add MVP calculation to Point Cloud rendering
+* View frustum culling to remove non-visible splats
+* Use spherical harmonics to evaluate colors of splats
+* Gaussian Splatter renderer
 
 ## Performance Analysis
 
