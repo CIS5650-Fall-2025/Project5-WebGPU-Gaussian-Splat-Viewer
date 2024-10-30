@@ -176,7 +176,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let pos_ndc = proj_pose.xyz / proj_pose.w;
 
     //culling
-    if (pos_ndc.x < -1.2 || pos_ndc.x > 1.2 || pos_ndc.y < -1.2 || pos_ndc.y > 1.2 || pos_ndc.z < 0 || pos_ndc.z > 1) {
+    if (pos_ndc.x < -1.2 || pos_ndc.x > 1.2 || pos_ndc.y < -1.2 || pos_ndc.y > 1.2 || view_pos.z <= 0.0 || view_pos.z > 100.0) {
         return;
     }
 
@@ -195,14 +195,13 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 		2.f * (x * z - r * y), 2.f * (y * z + r * x), 1.f - 2.f * (x * x + y * y)
     ));
 
-    // Define scaling factors (assuming these are stored similarly to position)
     let scale_factors_xy = unpack2x16float(gaussian.scale[0]);
     let scale_x = exp(scale_factors_xy.x);
     let scale_y = exp(scale_factors_xy.y);
     let scale_z = exp(unpack2x16float(gaussian.scale[1]).x);
 
     let gs = render_settings.gaussian_scaling;
-    // Construct the covariance matrix in world space
+    // Construct the covar matrix in world coord frame
     let s_mat = mat3x3<f32>(
         scale_x * gs, 0.0, 0.0,
         0.0, scale_y * gs, 0.0,
@@ -216,9 +215,9 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let z_p = gauss_pos_view.z;
 
     let jacob = mat3x3<f32>(
-        vec3<f32>(camera.focal.x / z_p, 0.0, -(x_p * camera.focal.x) / (z_p * z_p)),
-        vec3<f32>(0.0, camera.focal.y / z_p, -(y_p * camera.focal.y) / (z_p * z_p)),
-        vec3<f32>(0.0, 0.0, 0.0)
+        camera.focal.x / z_p, 0.0, -(x_p * camera.focal.x) / (z_p * z_p),
+        0.0, camera.focal.y / z_p, -(y_p * camera.focal.y) / (z_p * z_p),
+        0.0, 0.0, 0.0
     );
 
     //copy over the W matrix, I wish there was a better way to do this with a view/slice.
@@ -231,14 +230,14 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     var covar_mat_2d = transpose(T_mat) * covar_mat_3d * T_mat;
 
     //0.3 seems enormous for an epsilon value, maybe i'm misunderstanding
-    covar_mat_2d[0][0] += 0.01;
-    covar_mat_2d[1][1] += 0.01;
+    covar_mat_2d[0][0] += 0.3; //put it back to 0.3 bc couldn't see bike spokes
+    covar_mat_2d[1][1] += 0.3;
 
 
     let det = covar_mat_2d[0][0] * covar_mat_2d[1][1] - covar_mat_2d[0][1] * covar_mat_2d[1][0];
     let mid = 0.5 * (covar_mat_2d[0][0]+ covar_mat_2d[1][1]);
-    let lambda1 = mid + sqrt(max(0.01, mid * mid - det));
-    let lambda2 = mid - sqrt(max(0.01, mid * mid - det));
+    let lambda1 = mid + sqrt(max(0.1, mid * mid - det));
+    let lambda2 = mid - sqrt(max(0.1, mid * mid - det));
 
     let direction = normalize(position.xyz + camera.view[3].xyz);
 
@@ -248,7 +247,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     );
 
     let radius = ceil(3.0 * sqrt(max(lambda1, lambda2)));
-    let rad_2d = vec2<f32>(radius/camera.viewport.x, radius/camera.viewport.y);
+    let rad_2d = vec2<f32>((2 * radius)/camera.viewport.x, (2 * radius)/camera.viewport.y);
     let color = computeColorFromSH(direction, idx, u32(render_settings.sh_deg));
 
     let sort_index = atomicAdd(&sort_infos.keys_size, 1);
@@ -261,7 +260,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     splats[sort_index].inv_covar_2d[1] = pack2x16float(covar_2d_inv[1].xy);
     splats[sort_index].radius = pack2x16float(rad_2d);
     //Have to make sure that the sort depth is positive, so that bitcasted sort is the same
-    //farthest away sorted to first because we cant to render back to front
+    //farthest away sorted to first because we want to render back to front
     sort_depths[sort_index] = bitcast<u32>(101.0 - view_pos.z);
     sort_indices[sort_index] = sort_index;
 

@@ -40,11 +40,8 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) ins
     var out: VertexOutput;
 
     let ind = sort_indices[instanceIndex];
-    //TODO: reconstruct 2D quad based on information from splat, pass 
-    // Read the splat data for this instance
     let splat = splats[ind];
 
-    // Unpack the splat data
     let pos_xy = unpack2x16float(splat.pos_opacity[0]);
     let pos_zo = unpack2x16float(splat.pos_opacity[1]);
     let color = vec4<f32>(
@@ -52,16 +49,17 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) ins
         unpack2x16float(splat.color_rg_ba[1])
     );
     let inv_covar_2d = vec3<f32>(
-        unpack2x16float(splat.inv_covar_2d[0]),
+        unpack2x16float(splat.inv_covar_2d[0]).x,
+        unpack2x16float(splat.inv_covar_2d[0]).y,
         unpack2x16float(splat.inv_covar_2d[1]).y
     );
     let position_ndc = vec3<f32>(pos_xy.x, pos_xy.y, pos_zo.x);
     let opacity = pos_zo.y;
     //let radius = splat.radius * (1 / 1000.0f);
     //let radius = 0.01;
-    let rad_2d = unpack2x16float(splat.radius) / 1.0;
+    let rad_2d = unpack2x16float(splat.radius);
 
-    // Define quad offsets for the four vertices (adjust size as needed)
+    // Define quad offsets for the four vertices. Use radius to include >97% of caussian CDF 
     var quadOffsets = array<vec2<f32>, 4>(
         vec2<f32>(-rad_2d.x, -rad_2d.y),
         vec2<f32>(rad_2d.x, -rad_2d.y),
@@ -69,7 +67,6 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) ins
         vec2<f32>(rad_2d.x, rad_2d.y),
     );
 
-    // Calculate final position by offsetting the splat position
     let quadOffset = quadOffsets[vertexIndex];
     //let position_pixels = vec2<f32>((position_ndc.x * 0.5 + 0.5) * camera.viewport.x, (position_ndc.y * 0.5 + 0.5) * camera.viewport.y);
     out.position = vec4<f32>(
@@ -90,14 +87,15 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) ins
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let dummy = camera.proj;
-    let delta = ((in.position.xy / camera.viewport) * 2.0 - 1.0) - in.midpoint;
+    let delta = ((in.position.xy / camera.viewport.xy) * 2.0 - 1.0) - in.midpoint;
     let delta_pix = vec2<f32>(0.5 * delta.x * camera.viewport.x, 0.5 * delta.y * camera.viewport.y);
     let expon = -(0.5 * delta_pix.x * delta_pix.x * in.inv_covar_2d.x + delta_pix.x * delta_pix.y * in.inv_covar_2d.y + 0.5 * delta_pix.y * delta_pix.y * in.inv_covar_2d.z);
+    //let expon = 0.0f;
     if expon > 0.0 {
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
 
-    let final_a = min(0.999, in.opacity * exp(expon));
+    let final_a = min(0.99, in.opacity * exp(expon));
 
-    return vec4<f32>(in.color.x, in.color.y, in.color.z, in.color.w) * final_a;//in.opacity);
+    return vec4<f32>(in.color.x, in.color.y, in.color.z, final_a); //* final_a;//in.opacity);
 }

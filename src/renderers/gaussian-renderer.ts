@@ -257,7 +257,7 @@ export default function get_renderer(
           view: texture_view,
           loadOp: 'clear',
           storeOp: 'store',
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
         }
       ],
     });
