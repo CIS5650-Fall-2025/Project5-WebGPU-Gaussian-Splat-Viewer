@@ -1,31 +1,44 @@
 # Project5-WebGPU-Gaussian-Splat-Viewer
 
-**University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 4**
+**University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 5**
 
-* (TODO) YOUR NAME HERE
-* Tested on: (TODO) **Google Chrome 222.2** on
-  Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
+* Maya Diaz Huizar
+* Tested on: Google Chrome 132.0 on Windows 10, AMD Ryzen 9 5900X @ 3.7GHz 32GB RAM, Nvidia RTX 3080 10GB 
 
-### Live Demo
+## Live Demo (requires Chrome and a WebGPU compatible GPU)
+[Demo Link](https://aorus1.github.io/Project5-WebGPU-Gaussian-Splat-Viewer/)
+[Sample Files](https://drive.google.com/drive/folders/1rwtArEbj7GfjMeK6mD3a4QN6ZFLKQoBB?usp=sharing)
 
-[![](img/thumb.png)](http://TODO.github.io/Project4-WebGPU-Forward-Plus-and-Clustered-Deferred)
+## Demo Video
 
-### Demo Video/GIF
+[![Demo Video]()](images/demo.mp4)
 
-[![](img/video.mp4)](TODO)
+## Project Overview
 
-### (TODO: Your README)
+The WebGPU Gaussian Splat Viewer is a 3D renderer for Gaussian splats, designed to display and visualize point cloud data using a Gaussian splatting technique. Gaussian splats allow for smooth, realistic rendering of point clouds with transparency effects. This viewer is built in WebGPU, featuring a Gaussian renderer that includes preprocessing and rendering pipelines, depth sorting, and spherical harmonics-based shading.
 
-*DO NOT* leave the README to the last minute! It is a crucial part of the
-project, and we will not be able to grade you without a good README.
+## Features
 
-This assignment has a considerable amount of performance analysis compared
-to implementation work. Complete the implementation early to leave time!
+### Gaussian Preprocessing Pipeline
+The preprocessing pipeline handles 3D Gaussian data before rendering:
+- **View-Frustum Culling**: Removes non-visible Gaussians outside the camera’s view.
+- **3D to 2D Transformation**: Transforms Gaussian points into 2D screen space for rendering.
+- **Covariance Calculation**: Computes a 2D conic for each Gaussian based on a covariance matrix derived from 3D rotation and scaling data.
+- **Opacity Scaling**: Applies a sigmoid function to Gaussian opacities for realistic transparency.
+- **Depth Sorting**: Uses a GPU-based radix sort to sort Gaussians by depth for accurate transparency effects.
 
-### Credits
+## Performance Analysis
+- **Point Cloud vs. Gaussian Renderer**: Gaussian splatting improves rendering quality for point clouds, with spherical harmonics and Gaussian opacity scaling providing smoother, more realistic visuals. However, the Gaussian renderer is more computationally intensive than direct point cloud rendering due to shading and transparency effects. Performance is obviously and noticeably worse, but this is understandable.
+  
+- **Effect of Workgroup Size on Performance**: Workgroup size significantly impacts performance in the Gaussian renderer. I found the default parameter given to be the most performant, which makes sense as its likely a nice middle ground. 
 
+- **View-Frustum Culling**: Culling offers a substantial performance boost by eliminating off-screen Gaussians from rendering, reducing the number of draw calls and unnecessary GPU computations. The speedup is substantial because a significant number of threads can be abandoned, leading to faster draws. 
+
+- **Gaussian Count and Performance**: As the number of Gaussians increases, rendering performance decreases due to increased depth sorting and fragment processing requirements. Testing with varying Gaussian counts reveals the expected worse performance with increased Gaussian counts. 
+
+## Credits
 - [Vite](https://vitejs.dev/)
-- [tweakpane](https://tweakpane.github.io/docs//v3/monitor-bindings/)
-- [stats.js](https://github.com/mrdoob/stats.js)
+- [tweakpane](https://cocopon.github.io/tweakpane/)
 - [wgpu-matrix](https://github.com/greggman/wgpu-matrix)
-- Special Thanks to: Shrek Shao (Google WebGPU team) & [Differential Guassian Renderer](https://github.com/graphdeco-inria/diff-gaussian-rasterization)
+- [WebGPU Developer Tools](https://chrome.google.com/webstore/detail/webgpu-developer-tools/)
+- Special thanks to Shrek Shao from Google WebGPU and [Differential Gaussian Renderer](https://github.com/graphdeco-inria/diff-gaussian-rasterization) for inspiration and resources.

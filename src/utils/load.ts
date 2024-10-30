@@ -13,8 +13,8 @@ const c_size_3d_gaussian =
 
 export type PointCloud = Awaited<ReturnType<typeof load>>;
 
-export async function load(file: string, device: GPUDevice) {
-  const blob = new Blob([file]);
+export async function load(file: File, device: GPUDevice) {
+  const blob = new Blob([file], { type: file.type });
   const arrayBuffer = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     
