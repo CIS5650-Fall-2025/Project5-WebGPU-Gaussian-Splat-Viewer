@@ -29,7 +29,17 @@ How Gaussian Splatting Rendering is achieved:
 *  Render pixel color within gaussian tiles (which enclose >97% of the pdf) according to the 2D gaussian pdf taken from the previous projection.
 
 ### Performance Analysis
+ * Compare your results from point-cloud and gaussian renderer, what are the differences?
 
+ The point cloud renderer only has to make one shader call, whereas the gaussian renderer needs to first run a preprocessing shader, then a radix sort, then finally a render shader. This generally causes the gaussian renderer to run slower. However, the Gaussian renderer is also doing slower computation within the shader. The preprocessing shader uses atomic add to assemble the list of 2d gaussians(splats) which reduces parallelism and increases runtime. Additionally, which transparent blending, the fragment shader has to draw many gaussians which overlap, causing more operations per pixel and slower runtime. 
+
+* Does view frustum culling provide a performance improvement? Why do you think this is?
+
+Frustum Culling significantly improves performance. For the smaller environments, like Bonsai, the effect is negligible, but is noticeable in more complex environments like the playroom scene. Additionally, in environments such as the bike environment where all of the gaussian are likely enclosed within the viewing frustum, atomic adds are only rearranging the splat/gaussian order and not decreasing the size of the render buffer for the render shader. However, for scenes that wrap around like the playroom scene, A large portion of gaussians will often be culled, improving performance. 
+
+* Does the number of Gaussians affect performance? Why do you think that is?
+
+Increasing the number of gaussians decreases runtime. This is due to a larger number of Gaussians needing to be preprocessed and similarly a larger number of splats having to be rendered. Regardless, the least-pleasent effect of larger scenes is initial load time. For very complex scenes, like the playroom scene, it takes about a minute before the scene is loaded and rendering can begin. 
 
 ### Credits
 
