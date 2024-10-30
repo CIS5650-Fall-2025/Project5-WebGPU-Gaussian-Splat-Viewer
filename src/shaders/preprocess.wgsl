@@ -1,4 +1,3 @@
-
 const SH_C0: f32 = 0.28209479177387814;
 const SH_C1 = 0.4886025119029199;
 const SH_C2 = array<f32,5>(
@@ -58,74 +57,47 @@ struct Gaussian {
 
 struct Splat {
     //TODO: store information for 2D splat rendering
-    color: array<u32,2>,
-    radius_depths_pos: array<u32,2>,
-    conic: array<u32,2>
+
+    radii_depths_pos:array<u32,2>,
+    conic_opacity:array<u32,2>,
+    color_tiles_touched:array<u32,2>
 };
 
-// struct Splat {
-//     //TODO: store information for 2D splat rendering
-//     // Data is packed, need to unpack
-//     position_and_size: array<u32,2>,
-//     color_data: array<u32,2>,
-//     conic_and_opacity: array<u32,2>,
-// };
 //TODO: bind your data here
- 
+
 @group(0) @binding(0)
 var<uniform> camera: CameraUniforms;
-@group(0) @binding(1)
-var<storage,read> gaussians: array<Gaussian>;
-@group(0) @binding(2)
-var<storage,read_write> splats: array<Splat>;
-@group(0) @binding(3)
-var<uniform> settings: RenderSettings;
-@group(0) @binding(4)
-var<storage,read> color_data: array<u32>;
 
 @group(1) @binding(0)
-var<storage, read_write> sort_infos: SortInfos;
+var<storage,read> gaussians : array<Gaussian>;
 @group(1) @binding(1)
-var<storage, read_write> sort_depths : array<u32>;
-@group(1) @binding(2)
-var<storage, read_write> sort_indices : array<u32>;
+var<uniform> settings:RenderSettings;
+@group(1) @binding(2) 
+var<storage,read> sh_buffer : array<u32>;
 @group(1) @binding(3)
-var<storage, read_write> sort_dispatch: DispatchIndirect;
+var<storage,read_write> splats:array<Splat>;
 
-/// reads the ith sh coef from the storage buffer 
-// fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
-//     //TODO: access your binded sh_coeff, see load.ts for how it is stored
-//     let output_offset = splat_idx * 16 * 3;
-//     let order_offset = c_idx * 3;
-//     let index = (output_offset + order_offset)/2;
-//     var coeff_1 = vec2f(0.);
-//     var coeff_2 = vec2f(0.);
-//     var result = vec3f(0.);
-//     //if odd
-//     coeff_1 = unpack2x16float((sh_buffer[output_offset + order_offset]));
-//     coeff_2 = unpack2x16float((sh_buffer[output_offset + order_offset + 1]));
-//     if(index % 2 == 0)
-//     {
-//         result = vec3f(coeff_1.x,coeff_1.y,coeff_2.x);
-//     }
-//     else
-//     {
-//         result = vec3f(coeff_1.y,coeff_2.x,coeff_2.y);
-//     }
-//     return result;
-// }
+@group(2) @binding(0)
+var<storage, read_write> sort_infos: SortInfos;
+@group(2) @binding(1)
+var<storage, read_write> sort_depths : array<u32>;
+@group(2) @binding(2)
+var<storage, read_write> sort_indices : array<u32>;
+@group(2) @binding(3)
+var<storage, read_write> sort_dispatch: DispatchIndirect;
 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
     //TODO: access your binded sh_coeff, see load.ts for how it is stored
     let base = splat_idx * 24 + (c_idx / 2) * 3 + c_idx % 2;
-    let rg = unpack2x16float(color_data[base]);
-    let ba = unpack2x16float(color_data[base + 1]);
+    let rg = unpack2x16float(sh_buffer[base]);
+    let ba = unpack2x16float(sh_buffer[base + 1]);
     if (c_idx % 2 == 0) {
         return vec3f(rg.x, rg.y, ba.x);
     } else {
         return vec3f(rg.y, ba.x, ba.y);
     }
 }
+ 
 
 // spherical harmonics evaluation with Condon–Shortley phase
 fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
@@ -161,157 +133,155 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
 }
 
 
-fn Compute3DCovariance(gaussian_scaling : f32, gaussian_id:u32)->array<f32,6>
+fn computeCov3D(gaussian_scaling:f32,idx:u32) -> array<f32,6>
 {
-    //  R S S' R'
-    let rot_rx = unpack2x16float(gaussians[gaussian_id].rot[0]);
-    let rot_yz = unpack2x16float(gaussians[gaussian_id].rot[1]);
-    let r = rot_rx.x;
-    let x = rot_rx.y;
-    let y = rot_yz.x;
-    let z = rot_yz.y; 
-    let R = mat3x3f(
-    1.f - 2.f * (y * y + z * z), 2.f * (x * y - r * z), 2.f * (x * z + r * y),
-    2.f * (x * y + r * z), 1.f - 2.f * (x * x + z * z), 2.f * (y * z - r * x),
-    2.f * (x * z - r * y), 2.f * (y * z + r * x), 1.f - 2.f * (x * x + y * y)
-    );
+	// Create scaling matrix
+	
+    let scalingxy = unpack2x16float(gaussians[idx].scale[0]);
+    let scalingzw = unpack2x16float(gaussians[idx].scale[1]);
+	let S = mat3x3f(gaussian_scaling * exp(scalingxy.x),0.,0.,
+	 0.,gaussian_scaling * exp(scalingxy.y),0.,
+	 0.,0.,gaussian_scaling * exp(scalingzw.x));
 
-    let scale_xy = unpack2x16float(gaussians[gaussian_id].scale[0]);
-    let scale_zw = unpack2x16float(gaussians[gaussian_id].scale[1]);
-    let S = mat3x3f(gaussian_scaling * exp(scale_xy.x),0.0,0.0,
-                    0.0,gaussian_scaling * exp(scale_xy.y),0,
-                    0.0,0.0,gaussian_scaling * exp(scale_zw.x));
+	// Normalize quaternion to get valid rotation
+    let rotxy = unpack2x16float(gaussians[idx].rot[0]);
+    let rotzw = unpack2x16float(gaussians[idx].rot[1]);
+	let r = rotxy.x;
+	let x = rotxy.y;
+	let y = rotzw.x;
+	let z = rotzw.y;
 
-    let M = S*R;
-    let Sigma = (transpose(M)*M);
+	// Compute rotation matrix from quaternion
+	let R = mat3x3f(
+		1.f - 2.f * (y * y + z * z), 2.f * (x * y - r * z), 2.f * (x * z + r * y),
+		2.f * (x * y + r * z), 1.f - 2.f * (x * x + z * z), 2.f * (y * z - r * x),
+		2.f * (x * z - r * y), 2.f * (y * z + r * x), 1.f - 2.f * (x * x + y * y)
+	);
 
-    let cov3D = array<f32,6>((Sigma[0][0]),
-                            (Sigma[0][1]),
-                            (Sigma[0][2]),
-                            (Sigma[1][1]),
-                            (Sigma[1][2]),
-                            (Sigma[2][2]));
+	let M = S * R;
+
+	// Compute 3D world covariance matrix Sigma
+	let Sigma = transpose(M) * M;
+
+	// Covariance is symmetric, only store upper right
+    var cov3D =array<f32,6>(
+	    Sigma[0][0],
+	    Sigma[0][1],
+	    Sigma[0][2],
+	    Sigma[1][1],
+	    Sigma[1][2],
+	    Sigma[2][2]);
 
     return cov3D;
-
 }
 
-// 2D conic, maximum radius, and maximum quad size in NDC 
-fn Compute2DCovariance(cov3D:array<f32,6>,gaussian_id:u32)->vec3f
+fn computeCov2D(worldpos: vec3f, cov3D:array<f32,6>)->vec3f
 {
-
-    let a = unpack2x16float(gaussians[gaussian_id].pos_opacity[0]);
-    let b = unpack2x16float(gaussians[gaussian_id].pos_opacity[1]);
-    let pos = vec4f(a.x, a.y, b.x, 1.);
-    var t = camera.view*pos;
+    //view space point
+	var t =  camera.view * vec4f(worldpos,1.);
 
     let limx = 0.65f * camera.viewport.x / camera.focal.x;
     let limy = 0.65f * camera.viewport.y / camera.focal.y;
-    let txtz = t.x / t.z;
-    let tytz = t.y / t.z;
-    t.x = min(limx, max(-limx, txtz)) * t.z;
-    t.y = min(limy, max(-limy, tytz)) * t.z;
 
-    let focal_x = camera.focal.x;
-    let focal_y = camera.focal.y;
-    let J = mat3x3f(
-		focal_x / t.z, 0.0f, -(focal_x * t.x) / (t.z * t.z),
-		0.0f, focal_y / t.z, -(focal_y * t.y) / (t.z * t.z),
-		0.0, 0.0, 0.0);
+	let txtz = t.x / t.z;
+	let tytz = t.y / t.z;
+	t.x = min(limx, max(-limx, txtz)) * t.z;
+	t.y = min(limy, max(-limy, tytz)) * t.z;
 
-        let W = transpose(mat3x3f(
-        camera.view[0].xyz, camera.view[1].xyz, camera.view[2].xyz
-    ));
+	let J = mat3x3f(
+		camera.focal.x / t.z, 0.0f, -(camera.focal.x * t.x) / (t.z * t.z),
+		0.0f, camera.focal.y / t.z, -(camera.focal.y * t.y) / (t.z * t.z),
+		0, 0, 0);
 
-    let T = W * J;
-    let Vrk = mat3x3f(
+	let W = transpose(mat3x3f(camera.view[0].xyz,
+                    camera.view[1].xyz,
+                    camera.view[2].xyz));
+
+	let T = W * J;
+
+	let Vrk = mat3x3f(
 		cov3D[0], cov3D[1], cov3D[2],
 		cov3D[1], cov3D[3], cov3D[4],
 		cov3D[2], cov3D[4], cov3D[5]);
-    let cov_mat = (transpose(T) * transpose(Vrk) * T);
-    let cov = vec3f(cov_mat[0][0] + 0.3f,cov_mat[0][1] ,cov_mat[1][1]+ 0.3f);
-    
-    return cov;
 
+	var cov = transpose(T) * transpose(Vrk) * T;
+
+	// Apply low-pass filter: every Gaussian should be at least
+	// one pixel wide/high. Discard 3rd row and column.
+	cov[0][0] += 0.3f;
+	cov[1][1] += 0.3f;
+	return vec3f(cov[0][0] ,cov[0][1],cov[1][1]);
 }
-
-
-fn ndc2Px(v:vec2f, S:vec2f)->vec2<f32>
-{
-	return ((v + vec2f(1.0)) * S - 1.0) * 0.5;
-}
-
 
 @compute @workgroup_size(workgroupSize,1,1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
-    
-    // Early exit if index is out of bounds
-    if (idx >= arrayLength(&gaussians)) {
+    //TODO: set up pipeline as described in instruction
+    let pos_xy = unpack2x16float(gaussians[idx].pos_opacity[0]);//world pos xy
+    let pos_z_opacity = unpack2x16float(gaussians[idx].pos_opacity[1]);//world pos z and opacity
+
+    let worldpos = vec4f(pos_xy,pos_z_opacity.x,1.);
+
+    //compute depth for depth based view frustum culling
+    let depth = (camera.view * worldpos).z;
+    if(depth <= 0.1) // if depth less than near plane(hard coded to 0.1)
+    {
         return;
     }
 
-    // Load gaussian data once to avoid multiple memory accesses
-    let gaussian = gaussians[idx];
-    let pos_a = unpack2x16float(gaussian.pos_opacity[0]);//pos
-    let pos_b = unpack2x16float(gaussian.pos_opacity[1]);//opacity
-    let pos = vec4f(pos_a.x, pos_a.y, pos_b.x, 1.);
-
-    // Transform position first
-    let view_pos = camera.view * pos;
-    let depths = view_pos.z;
-    let proj_pos = camera.proj * view_pos;
-    let ndc_pos = proj_pos.xy / proj_pos.w;
-
-    // Compute covariance only if point is in front of camera
-    if (depths <= 0.0) {
-        return;
+    //compute 3D, 2D covariance and inv 2D cov as conic
+    let cov3D = computeCov3D(settings.gaussian_scaling,idx);
+    let cov = computeCov2D(worldpos.xyz, cov3D);
+    let det = (cov.x * cov.z - cov.y * cov.y);
+	if (det == 0.0f)
+    {
+		return;
     }
+	let det_inv = 1.f / det;
+	let conic = vec3f( cov.z * det_inv, -cov.y * det_inv, cov.x * det_inv );
 
-    // Compute 3D covariance
-    let cov3D = Compute3DCovariance(settings.gaussian_scaling, idx);
-    let cov = Compute2DCovariance(cov3D, idx);
+    let mid = 0.5f * (cov.x + cov.z);
+	let lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
+	let lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
+	let my_radius = ceil(3.f * sqrt(max(lambda1, lambda2)));
 
-    // Compute conic safely
-    let det = cov.x * cov.z - cov.y * cov.y;
+    let projpos = camera.proj * camera.view * worldpos;
+    let ndc = projpos.xy/projpos.w;
 
-    let det_inv = select(1.0 / det, 0.0, abs(det) < 1e-6);
-    let conic = vec3f(
-        cov.z * det_inv,
-        -cov.y * det_inv,
-        cov.x * det_inv
+    let direction = normalize(worldpos.xyz - camera.view_inv[3].xyz);
+    let color = computeColorFromSH(direction,idx,u32(settings.sh_deg));
+    //set info for sorter
+    let keysize = atomicAdd(&sort_infos.keys_size,1u);
+
+    splats[keysize].radii_depths_pos[0] = pack2x16float(vec2f(f32(my_radius),f32(depth)));
+    splats[keysize].radii_depths_pos[1] = pack2x16float(ndc.xy);
+
+    splats[keysize].conic_opacity[0] = pack2x16float(vec2f(conic.xy));
+    splats[keysize].conic_opacity[1] = pack2x16float(vec2f(conic.z,1.0f / (1.0f + exp(-pos_z_opacity.y))));
+
+    let grid = vec3f(20.,20.,1.);
+    let rect_min = vec2f(
+		min(grid.x, max(0., ((projpos.x - my_radius) / 20.))),
+		min(grid.y, max(0., ((projpos.y - my_radius) / 20.)))
+    );
+	let rect_max = vec2f(
+		min(grid.x, max(0., ((projpos.x + my_radius + 20. - 1) / 20.))),
+		min(grid.y, max(0., ((projpos.y + my_radius + 20. - 1) / 20.)))
     );
 
-    // Compute radius with bounds
-    let mid = 0.5 * (cov.x + cov.z);
-    let discriminant = max(0.1, mid * mid - det);
-    let lambda1 = mid + discriminant;
-    let lambda2 = mid - discriminant;
-    let radius = ceil(3.0f * sqrt(max(lambda1, lambda2)));// Fixed radius instead of dynamic calculation to prevent potential issues
-
-    // Compute color
-    let direction = normalize(pos.xyz - camera.view_inv[3].xyz);
-    let color = computeColorFromSH(direction, idx, u32(settings.sh_deg));
-
-    // Write results atomically
-    let s_idx = atomicAdd(&sort_infos.keys_size, 1u);
+    splats[keysize].color_tiles_touched[0] = pack2x16float(color.xy);
+    splats[keysize].color_tiles_touched[1] = pack2x16float(vec2f(color.z,1.));
     
-    // Pack and write data
-    splats[s_idx].color[0] = pack2x16float(color.xy);
-    splats[s_idx].color[1] = pack2x16float(vec2f(color.z, 1.0));
-    splats[s_idx].conic[0] = pack2x16float(conic.xy);
-    splats[s_idx].conic[1] = pack2x16float(vec2f(conic.z, 1.0f / (1.0f + exp(-pos_b.y))));
-    splats[s_idx].radius_depths_pos[0] = pack2x16float(vec2f(radius, radius)/camera.viewport);
-    splats[s_idx].radius_depths_pos[1] = pack2x16float(ndc_pos);
+    sort_depths[keysize] =  bitcast<u32>(100.0f - depth);
+    sort_indices[keysize] = keysize;
 
-    // Sort handling
-    let keys_per_dispatch = workgroupSize * sortKeyPerThread;
-    sort_depths[s_idx] = bitcast<u32>(depths);
-    sort_indices[s_idx] = s_idx;
+    let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
 
-    // Atomic operations for dispatch indirect
-    
-    if (s_idx % keys_per_dispatch == 0u) {
-        atomicAdd(&sort_dispatch.dispatch_x, 1u);
+    // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
+    if(keysize%keys_per_dispatch == 0)
+    {
+        atomicAdd(&sort_dispatch.dispatch_x,1u);
     }
+
+
 }
