@@ -41,6 +41,25 @@ Frustum Culling significantly improves performance. For the smaller environments
 
 Increasing the number of gaussians decreases runtime. This is due to a larger number of Gaussians needing to be preprocessed and similarly a larger number of splats having to be rendered. Regardless, the least-pleasent effect of larger scenes is initial load time. For very complex scenes, like the playroom scene, it takes about a minute before the scene is loaded and rendering can begin. 
 
+### A Collection of mishaps/bloopers and their causes:
+
+Neglecting to flip the y axis of NDC in rendering shader:
+![](images/flip_y_axis.png)
+
+Reading in the covariance rotation matrix transposed:
+![](images/transposed_rot_mat.png)
+
+Neglecting z-axis culling (Tiles on top are behind camera):
+![](images/no_z_culling.png)
+
+Applying the alpha scalar to both the color and the rgba alpha value. Interestingly, this shows the makeup gaussians very clearly.
+![](images/dimming_color.png)
+
+
+
+
+
+
 ### Credits
 
 - [Vite](https://vitejs.dev/)
