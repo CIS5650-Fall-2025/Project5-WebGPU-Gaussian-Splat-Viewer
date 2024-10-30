@@ -1,10 +1,12 @@
 # Project5-WebGPU-Gaussian-Splat-Viewer
 
-**University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 4**
+**University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 5**
 
-* (TODO) YOUR NAME HERE
-* Tested on: (TODO) **Google Chrome 222.2** on
-  Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
+* CARLOS LOPEZ GARCES
+  * [LinkedIn](https://www.linkedin.com/in/clopezgarces/)
+  * [Personal website](https://carlos-lopez-garces.github.io/)
+* Tested on: Windows 11, 13th Gen Intel(R) Core(TM) i9-13900HX @ 2.20 GHz, RAM 32GB, NVIDIA GeForce RTX 4060, personal laptop.
+
 
 ### Live Demo
 
@@ -14,13 +16,18 @@
 
 [![](img/video.mp4)](TODO)
 
-### (TODO: Your README)
+| Bonsai | Bicycle |
+|----------|----------|
+| ![](images/bonsai_1.png)   | ![](images/bicycle_1.png)   |
+| **Truck** | **Train** |
+| ![](images/truck_1.png)   | ![](images/train_1.png)   |
 
-*DO NOT* leave the README to the last minute! It is a crucial part of the
-project, and we will not be able to grade you without a good README.
+### WebGPU Gaussian Splat Viewer
 
-This assignment has a considerable amount of performance analysis compared
-to implementation work. Complete the implementation early to leave time!
+- Compare your results from point-cloud and gaussian renderer, what are the differences?
+- For gaussian renderer, how does changing the workgroup-size affect performance? Why do you think this is?
+- Does view-frustum culling give performance improvement? Why do you think this is? 
+- Does number of guassians affect performance?  Why do you think this is? 
 
 ### Credits
 
