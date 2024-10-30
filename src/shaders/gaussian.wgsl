@@ -1,9 +1,7 @@
 @group(0) @binding(0)
 var<storage, read> splats: array<Splat>;
-
 @group(0) @binding(1)
 var<storage, read> sort_indices : array<u32>;
-
 @group(0) @binding(2)
 var<uniform> camera: CameraUniforms;
 

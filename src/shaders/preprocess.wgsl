@@ -88,13 +88,11 @@ var<storage, read_write> sort_dispatch: DispatchIndirect;
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
     //TODO: access your binded sh_coeff, see load.ts for how it is stored
     let base = splat_idx * 24 + (c_idx / 2) * 3 + c_idx % 2;
+    let rg = unpack2x16float(color_data[base]);
+    let ba = unpack2x16float(color_data[base + 1]);
     if (c_idx % 2 == 0) {
-        let rg = unpack2x16float(color_data[base]);
-        let ba = unpack2x16float(color_data[base + 1]);
         return vec3f(rg.x, rg.y, ba.x);
     } else {
-        let rg = unpack2x16float(color_data[base]);
-        let ba = unpack2x16float(color_data[base + 1]);
         return vec3f(rg.y, ba.x, ba.y);
     }
 }
