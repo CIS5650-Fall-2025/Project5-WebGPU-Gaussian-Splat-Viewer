@@ -52,7 +52,7 @@ export default function get_renderer(
     nulling_data
   );
 
-  const splat_size = 8;
+  const splat_size = 16;
 
   const splat_buffer = createBuffer(
     device, 
@@ -67,7 +67,7 @@ export default function get_renderer(
     'indirect buffer', 
     20, 
     GPUBufferUsage.COPY_DST | GPUBufferUsage.INDIRECT,
-    new Uint32Array([6, pc.num_points, 0, 0, 0])
+    new Uint32Array([6, 0, 0, 0, 0])
   );
 
   // ===============================================
@@ -82,7 +82,8 @@ export default function get_renderer(
       entryPoint: 'preprocess',
       constants: {
         workgroupSize: C.histogram_wg_size,
-        sortKeyPerThread: c_histogram_block_rows
+        sortKeyPerThread: c_histogram_block_rows,
+        shDegree: pc.sh_deg
       }
     }
   });
@@ -119,7 +120,8 @@ export default function get_renderer(
     layout: preprocess_pipeline.getBindGroupLayout(3),
     entries: [
       { binding: 0, resource: { buffer: splat_buffer } },
-      { binding: 1, resource: { buffer: scaling_buffer }}
+      { binding: 1, resource: { buffer: scaling_buffer }},
+      { binding: 2, resource: { buffer: pc.sh_buffer }}
     ]
   });
 
@@ -145,7 +147,8 @@ export default function get_renderer(
     label: 'gaussian render splat bind group',
     layout: gaussian_render_pipeline.getBindGroupLayout(0),
     entries: [
-      { binding: 0, resource: { buffer: splat_buffer } }
+      { binding: 0, resource: { buffer: splat_buffer } },
+      { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer }}
     ]
   });
 
@@ -180,6 +183,7 @@ export default function get_renderer(
         }
       ],
     });
+
     gaussian_pass.setPipeline(gaussian_render_pipeline);
     gaussian_pass.setBindGroup(0, splat_render_bind_group);
 
@@ -212,7 +216,7 @@ export default function get_renderer(
 
       preprocess_pass(encoder);
 
-      //sorter.sort(encoder);
+      sorter.sort(encoder);
 
       encoder.copyBufferToBuffer(
         sorter.sort_info_buffer, 

@@ -19,6 +19,7 @@ const SH_C3 = array<f32,7>(
 
 override workgroupSize: u32;
 override sortKeyPerThread: u32;
+override shDegree: u32;
 
 struct DispatchIndirect {
     dispatch_x: atomic<u32>,
@@ -51,12 +52,11 @@ struct Gaussian {
 };
 
 struct Splat {
-    //TODO: store information for 2D splat rendering
     xy: u32,
-    wh: u32
+    wh: u32,
+    rg: u32,
+    ba: u32
 };
-
-//TODO: bind your data here
 
 @group(0) @binding(0)
 var<uniform> camera: CameraUniforms;
@@ -77,14 +77,23 @@ var<storage, read_write> sort_dispatch: DispatchIndirect;
 var<storage, read_write> splats: array<Splat>;
 @group(3) @binding(1)
 var<uniform> scaling: f32;
+@group(3) @binding(2)
+var<storage, read> shs: array<u32>;
 
-/// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
-    //TODO: access your binded sh_coeff, see load.ts for how it is stored
-    return vec3<f32>(0.0);
+    let i = splat_idx * 24 + (c_idx / 2) * 3 + c_idx % 2;
+
+    if (c_idx % 2 == 0) {
+        let rg = unpack2x16float(shs[i + 0]);
+        let br = unpack2x16float(shs[i + 1]);
+        return vec3f(rg.x, rg.y, br.x);
+    } else {
+        let br = unpack2x16float(shs[i + 0]);
+        let gb = unpack2x16float(shs[i + 1]);
+        return vec3f(br.y, gb.x, gb.y);
+    }
 }
 
-// spherical harmonics evaluation with Condon–Shortley phase
 fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
     var result = SH_C0 * sh_coef(v_idx, 0u);
 
@@ -240,18 +249,24 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
     let radius = ceil(3.f * sqrt(max(lambda1, lambda2)));
 
-    let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
-    // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
-
-    let passes = sort_infos.passes;
-    let sort_depth = sort_depths[0];
-    let sort_index = sort_indices[0];
-    let dispatch_z = sort_dispatch.dispatch_z;
-    
+    let keys_per_dispatch = workgroupSize * sortKeyPerThread;
     let index = atomicAdd(&sort_infos.keys_size, 1u);
+    if (index % keys_per_dispatch == 0) {
+        atomicAdd(&sort_dispatch.dispatch_x, 1u);
+    }
 
     let xy = pack2x16float(pos_ndc.xy);
-    let wh = pack2x16float((vec2f(radius, radius) / camera.viewport) * scaling);
+    let wh = pack2x16float((vec2f(radius, radius) * 2.0f / camera.viewport) * scaling);
     splats[index].xy = xy;
     splats[index].wh = wh;
+
+    let dir = normalize(pos_world.xyz - camera.view_inv[3].xyz);
+    let color = computeColorFromSH(dir, idx, shDegree);
+    let rg = pack2x16float(color.rg);
+    let ba = pack2x16float(vec2f(color.b, 1.0f));
+    splats[index].rg = rg;
+    splats[index].ba = ba;
+
+    sort_depths[index] = bitcast<u32>(100.0f - pos_view.z);
+    sort_indices[index] = index;
 }
