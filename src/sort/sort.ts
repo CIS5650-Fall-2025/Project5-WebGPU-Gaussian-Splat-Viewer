@@ -10,7 +10,7 @@
 
 import radix_sort_wgsl from './radix_sort.wgsl';
 import { align } from '../utils/util';
-
+ 
 export interface SortStuff {
   sort: (encoder: GPUCommandEncoder) => void,
   sort_info_buffer: GPUBuffer,
