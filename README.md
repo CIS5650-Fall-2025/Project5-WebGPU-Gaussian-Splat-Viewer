@@ -12,7 +12,7 @@
 
 ## Demo Video/GIF
 
-[![](img/video.mp4)](TODO)
+![](images/bonsai.gif)
 
 ## Performance Analysis
 
