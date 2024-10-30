@@ -20,6 +20,9 @@
 | **Truck** | **Train** |
 | ![](images/truck_1.gif)   | ![](images/train_1.gif)   |
 
+## WebGPU Gaussian Splat and Point Cloud Viewer
+
+The viewer handles well many of the common scenes typically used by academic papers to present their results.
 
 | Bonsai | Bicycle |
 |----------|----------|
@@ -27,7 +30,13 @@
 | **Truck** | **Train** |
 | ![](images/truck_1.png)   | ![](images/train_1.png)   |
 
-### WebGPU Gaussian Splat and Point Cloud Viewer
+### Features
+
+- Real-Time Point Cloud Rendering: Visualize dense point cloud data from .ply files.
+
+- Gaussian Splatting: Reconstruct the radiance field of a scene from its point cloud using Gaussian Splatting.
+
+- Camera Controls: Pan, zoom, and rotate for detailed examination of Gaussian splats and point clouds.
 
 A point cloud is the main input to the Gaussian splatting rendering process.
 
