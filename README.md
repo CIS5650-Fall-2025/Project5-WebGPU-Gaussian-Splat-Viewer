@@ -12,15 +12,24 @@ You need to download scene/camera files available [here](https://drive.google.co
 
 ### Demo Video
 
-[![](images/gaussian_splatting_vid.mp4)](Demo Video)
+![](images/gaussian_splatting_demo.gif)
 
-### (TODO: Your README)
+### README
 
-*DO NOT* leave the README to the last minute! It is a crucial part of the
-project, and we will not be able to grade you without a good README.
+Features Implemented:
+* Point Cloud Renderer: Render a set of points in the scene.
+![](images/point_set_img.png)
+* Gaussian Splatting Renderer: Given a large set of 3D gaussians, with spherical harmonic coloring, opacity, position and covariance, render in the scene. (see above examples)
 
-This assignment has a considerable amount of performance analysis compared
-to implementation work. Complete the implementation early to leave time!
+How Gaussian Splatting Rendering is achieved:
+* First, calculate all 3D gaussians 3D covariance and positions in the camera frame
+* Cull (remove) gaussians which do not appear in the frame.
+* Project, using the first-order Jacobian approximation, the 3D gaussians into 2D camera space.
+* Calculate the gaussian color with spherical harmonic equations and provided gaussian coefficients. 
+*  Render pixel color within gaussian tiles (which enclose >97% of the pdf) according to the 2D gaussian pdf taken from the previous projection.
+
+### Performance Analysis
+
 
 ### Credits
 
