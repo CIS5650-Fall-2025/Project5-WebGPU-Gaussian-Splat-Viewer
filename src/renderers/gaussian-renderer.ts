@@ -52,7 +52,7 @@ export default function get_renderer(
     nulling_data
   );
 
-  const splat_size = 16;
+  const splat_size = 24;
 
   const splat_buffer = createBuffer(
     device, 
@@ -120,8 +120,8 @@ export default function get_renderer(
     layout: preprocess_pipeline.getBindGroupLayout(3),
     entries: [
       { binding: 0, resource: { buffer: splat_buffer } },
-      { binding: 1, resource: { buffer: scaling_buffer }},
-      { binding: 2, resource: { buffer: pc.sh_buffer }}
+      { binding: 1, resource: { buffer: scaling_buffer } },
+      { binding: 2, resource: { buffer: pc.sh_buffer } }
     ]
   });
 
@@ -139,7 +139,21 @@ export default function get_renderer(
     fragment: {
       module: device.createShaderModule({ code: renderWGSL }),
       entryPoint: 'fs_main',
-      targets: [{ format: presentation_format }]
+      targets: [{ 
+        format: presentation_format,
+        blend: {
+          color: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+              operation: 'add'
+          },
+          alpha: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+              operation: 'add'
+          }
+        }
+      }]
     }
   });
 
@@ -148,7 +162,8 @@ export default function get_renderer(
     layout: gaussian_render_pipeline.getBindGroupLayout(0),
     entries: [
       { binding: 0, resource: { buffer: splat_buffer } },
-      { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer }}
+      { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
+      { binding: 2, resource: { buffer: camera_buffer } }
     ]
   });
 

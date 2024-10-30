@@ -55,7 +55,9 @@ struct Splat {
     xy: u32,
     wh: u32,
     rg: u32,
-    ba: u32
+    ba: u32,
+    co: u32,
+    cp: u32
 };
 
 @group(0) @binding(0)
@@ -210,7 +212,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let a = unpack2x16float(vertex.pos_opacity[0]);
     let b = unpack2x16float(vertex.pos_opacity[1]);
     let pos_world = vec4f(a.x, a.y, b.x, 1.0f);
-    let opa = b.y;
+    let opa = 1.0f / (1.0f + exp(-b.y));
     let pos_view = camera.view * pos_world;
     let pos_clip = camera.proj * pos_view;
     let pos_ndc = pos_clip.xyz / pos_clip.w;
@@ -266,6 +268,11 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let ba = pack2x16float(vec2f(color.b, 1.0f));
     splats[index].rg = rg;
     splats[index].ba = ba;
+
+    let co = pack2x16float(conic.xy);
+    let cp = pack2x16float(vec2f(conic.z, opa));
+    splats[index].co = co;
+    splats[index].cp = cp;
 
     sort_depths[index] = bitcast<u32>(100.0f - pos_view.z);
     sort_indices[index] = index;
