@@ -35,7 +35,6 @@ export default function get_renderer(
   //            Initialize GPU Buffers
   // ===============================================
 
-  var last_num_points = pc.num_points;
   const nulling_data = new Uint32Array([0]);
   const f32_size = 4;
   const splat_size = 3 * f32_size +  // x,y,z at f32
@@ -45,10 +44,10 @@ export default function get_renderer(
     device, 'gaussian splat buffer', 
     num_points * splat_size, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
 
-  const valid_quad_counter_buffer = createBuffer(
-    device, 'valid quad counter buffer', 
-    1 * f32_size, GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ);
-  const log_num_points = false;
+  const gs_indirect_draw_param = new Uint32Array([6, 0, 0, 0]); // 6 vertices per quad
+  const gs_render_launch_param_buffer = createBuffer(
+    device, 'gs render launch param buffer', 
+    4 * f32_size, GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST, gs_indirect_draw_param);
   // ===============================================
   //    Create Compute Pipeline and Bind Groups
   // ===============================================
@@ -129,25 +128,11 @@ export default function get_renderer(
 
   const preprocess_compute = (encoder: GPUCommandEncoder) => {
     const pass = encoder.beginComputePass();
-    
-    // Clear sort info before preprocess
-    device.queue.writeBuffer(
-      sorter.sort_info_buffer,
-      0,  // destination offset
-      new Uint32Array([0, 0, 0, 0, 0])  // Reset keys_size to 0
-    );
-    // clear splat buffer before preprocess
-    device.queue.writeBuffer(
-      guassian_splat_buffer,
-      0,  // destination offset
-      new Float32Array(num_points * splat_size / f32_size)  // Reset splat buffer to 0
-    );
-
     pass.setPipeline(preprocess_pipeline);
     pass.setBindGroup(0, preprocess_projection_bind_group);
     pass.setBindGroup(1, gs_preprocess_bind_group);
     pass.setBindGroup(2, sort_bind_group);
-    pass.dispatchWorkgroups(pc.num_points / C.histogram_wg_size);
+    pass.dispatchWorkgroups(num_points / C.histogram_wg_size);
     pass.end();
   };
 
@@ -206,7 +191,7 @@ export default function get_renderer(
     },
   });
 
-  const gaussian_render = (encoder: GPUCommandEncoder, texture_view: GPUTextureView, valid_quad_count: number) => {
+  const gaussian_render = (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
     // Continue with render pass using original encoder
     const pass = encoder.beginRenderPass({
       label: 'gaussian render',
@@ -220,7 +205,7 @@ export default function get_renderer(
     });
     pass.setPipeline(gaussian_render_pipeline);
     pass.setBindGroup(0, gs_render_bind_group);
-    pass.draw(6, valid_quad_count);
+    pass.drawIndirect(gs_render_launch_param_buffer, 0);
     pass.end();
   };
 
@@ -228,48 +213,43 @@ export default function get_renderer(
   //    Command Encoder Functions
   // ===============================================
   
-  const copy_valid_quad_count = async (encoder: GPUCommandEncoder) => {
-    encoder.copyBufferToBuffer(
-      sorter.sort_info_buffer, 
-      0,  // source offset
-      valid_quad_counter_buffer, 
-      0,  // destination offset
-      4   // size (u32)
-    );
-    device.queue.submit([encoder.finish()]);
-    await valid_quad_counter_buffer.mapAsync(GPUMapMode.READ);
-    const valid_quad_count = new Uint32Array(valid_quad_counter_buffer.getMappedRange())[0];
-    if (log_num_points) {
-      console.log('valid_quad_count', valid_quad_count, 'total_quad_count', pc.num_points);
-    }
-    valid_quad_counter_buffer.unmap();
-    last_num_points = valid_quad_count;
-  };
 
   // ===============================================
   //    Return Render Object
   // ===============================================
   return {
     frame: (texture_view: GPUTextureView) => {
-      const preprocess_encoder = device.createCommandEncoder({
+      
+      // Clear sort info before preprocess
+      device.queue.writeBuffer(
+        sorter.sort_info_buffer,
+        0,  // destination offset
+        new Uint32Array([0, 0, 0, 0, 0])  // Reset keys_size to 0
+      );
+      // clear splat buffer before preprocess
+      device.queue.writeBuffer(
+        guassian_splat_buffer,
+        0,  // destination offset
+        new Float32Array(num_points * splat_size / f32_size)  // Reset splat buffer to 0
+      );
+
+      const encoder = device.createCommandEncoder({
         label: 'gs preprocess encoder'
       });
-      preprocess_compute(preprocess_encoder);
+      preprocess_compute(encoder);
+      
+      encoder.copyBufferToBuffer(
+        sorter.sort_info_buffer,
+        0, // key size is first
+        gs_render_launch_param_buffer,
+        4,
+        4 // 4 bytes per float
+      );
 
-      // sorter.sort(preprocess_encoder);
+      sorter.sort(encoder);
 
-      device.queue.submit([preprocess_encoder.finish()]);
-
-      const copy_encoder = device.createCommandEncoder({
-        label: 'copy encoder'
-      });
-      copy_valid_quad_count(copy_encoder);
-    
-      const render_encoder = device.createCommandEncoder({
-        label: 'render encoder'
-      });
-      gaussian_render(render_encoder, texture_view, last_num_points);
-      device.queue.submit([render_encoder.finish()]);
+      gaussian_render(encoder, texture_view);
+      device.queue.submit([encoder.finish()]);
   },
     camera_buffer,
   };

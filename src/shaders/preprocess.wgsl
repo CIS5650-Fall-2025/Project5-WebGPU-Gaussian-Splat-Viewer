@@ -71,7 +71,7 @@ struct Splat {
 @group(1) @binding(1) var<uniform> gs_multiplier: f32;
 
 @group(2) @binding(0) var<storage, read_write> sort_infos: SortInfos;
-@group(2) @binding(1) var<storage, read_write> sort_depths : array<u32>;
+@group(2) @binding(1) var<storage, read_write> sort_depths : array<f32>;
 @group(2) @binding(2) var<storage, read_write> sort_indices : array<u32>;
 @group(2) @binding(3) var<storage, read_write> sort_dispatch: DispatchIndirect;
 
@@ -221,7 +221,15 @@ fn compute_cov_2d(
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
     //TODO: set up pipeline as described in instruction
-
+    if (idx >= arrayLength(&gaussians)) {
+        return;
+    }
+    if (idx == 0u)
+    {
+        atomicStore(&sort_dispatch.dispatch_x, 0u);
+        sort_dispatch.dispatch_y = 1u;
+        sort_dispatch.dispatch_z = 1u;
+    }
     // compute screen (ndc) position of the gaussian, not pixel position, so range is [-1, 1]
     let pos_xy = unpack2x16float(gaussians[idx].pos_opacity[0]); // First u32 contains x,y as f16
     let pos_za = unpack2x16float(gaussians[idx].pos_opacity[1]); // Second u32 contains z,opacity as f16
@@ -231,13 +239,9 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let pixel_pos = vec2<f32>(homogenized_screen_pos.x * 0.5 + 0.5, 
                               homogenized_screen_pos.y * 0.5 + 0.5); // uv center
                               
-    var this_splat_index = 0u;
-
     // check if the quad is valid
-    if (homogenized_screen_pos.x > -1.2 && homogenized_screen_pos.x < 1.2 &&
-        homogenized_screen_pos.y > -1.2 && homogenized_screen_pos.y < 1.2) {
-        this_splat_index = atomicAdd(&sort_infos.keys_size, 1u);
-    }else{
+    if (homogenized_screen_pos.x <= -1.2 || homogenized_screen_pos.x >= 1.2 ||
+        homogenized_screen_pos.y <= -1.2 || homogenized_screen_pos.y >= 1.2) {
         return;
     }
     // store pos
@@ -264,10 +268,29 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // find clamped quad bounds
 
     // store pos, radius & uv
+    var this_splat_index = idx; // should be sort_infos.keys_size
+    atomicAdd(&sort_infos.keys_size, 1u);
     splats[this_splat_index].screen_pos = homogenized_screen_pos;
     splats[this_splat_index].radius = radius / 100.0;
     // compute color
 
+
+    // if (this_splat_index % keys_per_dispatch == 0u) {
+    //     atomicAdd(&sort_dispatch.dispatch_x, 1u);
+    // }
+
+    // append indices and depths
+    sort_indices[this_splat_index] = this_splat_index;
+    sort_depths[this_splat_index] = homogenized_screen_pos.z;
+
+    // prepare for radix sort
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
+    let current_dispatches = (this_splat_index + 1u + keys_per_dispatch - 1u) / keys_per_dispatch;
+    
+    // update dispatch_x if count needs more dispatches
+    let current_dispatch_x = atomicLoad(&sort_dispatch.dispatch_x);
+    if (current_dispatches > current_dispatch_x) {
+        atomicStore(&sort_dispatch.dispatch_x, current_dispatches);
+    }
 }

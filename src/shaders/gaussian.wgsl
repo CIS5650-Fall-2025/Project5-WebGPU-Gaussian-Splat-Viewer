@@ -11,6 +11,7 @@ struct CameraUniforms {
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     //TODO: information passed from vertex shader to fragment shader
+    @location(0) color: vec4<f32>,
 };
 
 struct Splat {
@@ -28,13 +29,15 @@ fn vs_main(
     @builtin(instance_index) instance_index: u32,
 ) -> VertexOutput {
     let base_scale = splats[instance_index].radius;
+    let quad_width = base_scale / camera.viewport.x;
+    let quad_height = base_scale / camera.viewport.y;
     let quad_offsets = array<vec2<f32>, 6>(
-        vec2<f32>(-base_scale / camera.viewport.x, -base_scale / camera.viewport.y),  // First triangle
-        vec2<f32>( base_scale / camera.viewport.x, -base_scale / camera.viewport.y),
-        vec2<f32>( base_scale / camera.viewport.x,  base_scale / camera.viewport.y),
-        vec2<f32>(-base_scale / camera.viewport.x, -base_scale / camera.viewport.y),  // Second triangle
-        vec2<f32>( base_scale / camera.viewport.x,  base_scale / camera.viewport.y),
-        vec2<f32>(-base_scale / camera.viewport.x,  base_scale / camera.viewport.y),
+        vec2<f32>(-quad_width, -quad_height),  // First triangle
+        vec2<f32>( quad_width, -quad_height),
+        vec2<f32>( quad_width,  quad_height),
+        vec2<f32>(-quad_width, -quad_height),  // Second triangle
+        vec2<f32>( quad_width,  quad_height),
+        vec2<f32>(-quad_width,  quad_height),
     );
     let quad_center = splats[instance_index].screen_pos;
 
@@ -42,10 +45,11 @@ fn vs_main(
 
     var out: VertexOutput;
     out.position = vec4<f32>(vertex_pos, 0., 1.);
+    out.color = vec4<f32>(quad_width, quad_height, 0., 1.);
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(0., 1., 0., 1.);
+    return in.color;
 }
