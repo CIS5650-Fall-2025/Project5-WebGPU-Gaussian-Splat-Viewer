@@ -84,7 +84,6 @@ Everyone loves a good blooper reel! Here's a glimpse of some of the hilarious (a
 ![](images/blooper2.gif)
 
 **Resources:**
-
   - **3D Gaussian Splatting Paper:** [https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/)
   - **Gaussian Splatting Notes:** [https://github.com/kwea123/gaussian\_splatting\_notes](https://github.com/kwea123/gaussian_splatting_notes)
   - **Spherical Harmonics Post:** [https://beatthezombie.github.io/sh\_post\_1/](https://beatthezombie.github.io/sh_post_1/)
