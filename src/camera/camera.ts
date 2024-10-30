@@ -64,8 +64,8 @@ interface CameraPreset {
   rotation: Mat4,
 }
 
-export async function load_camera_presets(file: string): Promise<CameraPreset[]> {
-  const blob = new Blob([file]);
+export async function load_camera_presets(file: File): Promise<CameraPreset[]> {
+  const blob = new Blob([file], { type: file.type });
   const arrayBuffer = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     
