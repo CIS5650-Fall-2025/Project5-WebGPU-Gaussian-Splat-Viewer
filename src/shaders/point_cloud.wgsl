@@ -11,7 +11,7 @@ struct Gaussian {
     pos_opacity: array<u32,2>,
     rot: array<u32,2>,
     scale: array<u32,2>
-}
+};
 
 @group(0) @binding(0)
 var<uniform> camera: CameraUniforms;
@@ -35,7 +35,8 @@ fn vs_main(
     let pos = vec4<f32>(a.x, a.y, b.x, 1.);
 
     // TODO: MVP calculations
-    out.position = pos;
+    let proj_pos = camera.proj * camera.view * pos;
+    out.position = proj_pos;
 
     return out;
 }
