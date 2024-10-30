@@ -54,8 +54,8 @@ export default function get_renderer(
   const nulling_data = new Uint32Array([0]);
   const nulling_buffer = device.createBuffer({
     label: "indirect draw reset null buffer",
-    size: indirectdraw_buffersize,
-    usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
+    size: 1 * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   })
 
   device.queue.writeBuffer(nulling_buffer, 0, nulling_data.buffer);
@@ -157,7 +157,11 @@ export default function get_renderer(
   const splatBindGroup = device.createBindGroup({
     label: 'Splat Bind Group',
     layout: renderPipeline.getBindGroupLayout(0),
-    entries: [{ binding: 0, resource: { buffer: splatBuffer } }],
+    entries: [{ binding: 0, resource: { buffer: splatBuffer } },
+              { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } }
+      ]
+    ,
+    
   });
 
 
@@ -185,17 +189,18 @@ export default function get_renderer(
       computePass.setBindGroup(2, sort_bind_group);
 
       const workgroupSize = C.histogram_wg_size;
-      const sortKeyPerThread = c_histogram_block_rows;
-      const numWorkgroups = Math.ceil(pc.num_points / (workgroupSize * sortKeyPerThread));
+      const numWorkgroups = Math.ceil(pc.num_points / workgroupSize);
 
     
-      computePass.dispatchWorkgroups(numWorkgroups, 1, 1);
+      computePass.dispatchWorkgroups(numWorkgroups);
 
       computePass.end();
 
-      encoder.copyBufferToBuffer(sorter.sort_info_buffer, 0, indirectdraw_buffer, 4, 4)
+      
 
-      sorter.sort(encoder);
+      //sorter.sort(encoder);
+
+      encoder.copyBufferToBuffer(sorter.sort_info_buffer, 0, indirectdraw_buffer, 4, 4)
 
 
       const render_pass = encoder.beginRenderPass({
@@ -210,7 +215,7 @@ export default function get_renderer(
       render_pass.setPipeline(renderPipeline);
      
       render_pass.setBindGroup(0, splatBindGroup);
-      render_pass.setVertexBuffer(0, splatBuffer);
+      //render_pass.setVertexBuffer(0, splatBuffer);
       render_pass.drawIndirect(indirectdraw_buffer, 0);
       render_pass.end();
     },

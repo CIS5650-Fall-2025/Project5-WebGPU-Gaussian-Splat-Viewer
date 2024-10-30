@@ -58,7 +58,7 @@ struct Gaussian {
 struct Splat {
     //TODO: store information for 2D splat rendering
     position: vec2<f32>, 
-    size: f32,          
+    size: vec2<f32>,          
     color: vec3<f32>, 
 };
 
@@ -144,7 +144,8 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let xyz = vec3<f32>(xy, z.x);
     let alpha = z.y;
 
-    var positionNDC = camera.proj * camera.view * vec4<f32>(xyz, 1.0);
+    var positionNDC = camera.proj * (camera.view * vec4<f32>(xyz, 1.0));
+    
     positionNDC/=positionNDC.w;
     let boundary  = 1.2f;
 
@@ -158,10 +159,10 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let quatYZ = unpack2x16float(gaussian.rot[1]);
     let scaleXY = unpack2x16float(gaussian.scale[0]);
     let scaleZ = unpack2x16float(gaussian.scale[1]);
-    let scale = vec3<f32>(
-        renderSettings.gaussian_scaling * scaleXY.x, 
-        renderSettings.gaussian_scaling * scaleXY.y, 
-        renderSettings.gaussian_scaling * scaleZ.x);
+    let scale = exp(vec3<f32>(
+        scaleXY.x, 
+        scaleXY.y, 
+        scaleZ.x));
 
 
     let rotationMatrix = mat3x3<f32>(
@@ -171,15 +172,58 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     );
 
     let scaleMatrix = mat3x3<f32>(
-        scale.x, 0.0, 0.0,
-        0.0, scale.y, 0.0,
-        0.0, 0.0, scale.z
-    )
+        scale.x * renderSettings.gaussian_scaling , 0.0, 0.0,
+        0.0, scale.y * renderSettings.gaussian_scaling , 0.0,
+        0.0, 0.0, scale.z * renderSettings.gaussian_scaling ,
+    );
 
-    let 3Dcovariance = transpose(scaleMatrix * rotationMatrix) * scaleMatrix * rotationMatrix;
+    let covariance3D  = transpose(scaleMatrix * rotationMatrix) * scaleMatrix * rotationMatrix;
+    let covarianceSymmetric = array<f32, 6>(covariance3D[0][0], covariance3D[0][1], covariance3D[0][2],
+                                            covariance3D[1][1], covariance3D[1][2], covariance3D[2][2],);
+
+    //2D covariance matrix
+    var t = (camera.view * vec4<f32>(xyz, 1.0)).xyz;
+
+
+    let J = mat3x3<f32>(
+        camera.focal.x / t.z, 0.0f, -(camera.focal.x * t.x)/(t.z * t.z),
+        0.0f, camera.focal.y / t.z, -(camera.focal.y * t.y)/(t.x * t.z),
+        0.0, 0.0, 0.0
+    );
+
+    let W = mat3x3<f32>(
+        camera.view[0].x,  camera.view[1].x, camera.view[2].x,
+        camera.view[0].y,  camera.view[1].y, camera.view[2].y,
+        camera.view[0].z,  camera.view[1].z, camera.view[2].z
+    );
+
+    let T = W * J;
+
+    let Vrk = mat3x3<f32>(
+        covarianceSymmetric[0], covarianceSymmetric[1], covarianceSymmetric[2],
+        covarianceSymmetric[1], covarianceSymmetric[3], covarianceSymmetric[4],
+        covarianceSymmetric[2], covarianceSymmetric[4], covarianceSymmetric[5],
+    );
+
+    var cov = transpose(T) * transpose(Vrk) * T;
+    cov[0][0] += 0.3f;
+    cov[1][1] += 0.3f;
+
+    let cov_2D = vec3<f32>(cov[0][0], cov[0][1], cov[1][1]);
+    //radius
+    let det = (cov_2D.x * cov_2D.z - cov_2D.y * cov_2D.y);
+
+    let mid = 0.5f * (cov_2D.x + cov_2D.z);
+    let lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
+    let lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
+
+    let radius = ceil(3.0f * sqrt(max(lambda1, lambda2)));
+
+    let maxNDCsize = vec2( 2.0f * radius, 2.0f * radius)/camera.viewport;
+
 
     //testing
-    let testing = sort_infos.padded_size;
+    
     let testing2 = sh_buffer[0];
     let render = renderSettings.gaussian_scaling;
     let testing3 = sort_depths[0];
@@ -187,7 +231,9 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let testing5 = sort_dispatch.dispatch_y;
 
     let index = atomicAdd(&sort_infos.keys_size, 1u);
+    sort_indices[index] = index;
     splatBuffer[index].position = positionNDC.xy;
+    splatBuffer[index].size = maxNDCsize;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     if (index % keys_per_dispatch == 0){

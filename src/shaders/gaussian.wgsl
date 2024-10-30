@@ -1,12 +1,5 @@
 
-const quad_verts = array<vec2<f32>, 6>(
-    vec2<f32>(-0.01, -0.01),  // Bottom-left
-    vec2<f32>(0.01, -0.01),  // Bottom-right
-    vec2<f32>(-0.01,  0.01),  // Top-left
-    vec2<f32>(0.01, -0.01),  // Bottom-right
-    vec2<f32>( 0.01,  0.01),  // Top-right
-    vec2<f32>(-0.01,  0.01),  // Top-left
-    );
+
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -18,13 +11,14 @@ struct VertexOutput {
 struct Splat {
     //TODO: information defined in preprocess compute shader
     position: vec2<f32>, 
-    size: f32,          
+    size: vec2<f32>,          
     color: vec3<f32>, 
 };
 
 
 
 @group(0) @binding(0)var<storage, read> splats: array<Splat>;
+@group(0) @binding(1)var<storage, read> sorted_indices : array<u32>;
 
 
 @vertex
@@ -33,13 +27,25 @@ fn vs_main(
     @builtin(vertex_index) vert_idx : u32,) -> VertexOutput {
     var out: VertexOutput;
 
-    var splat = splats[instanceIndex];
-    //let size = splat.size;
+    let index = sorted_indices[instanceIndex];
+    var splat = splats[index];
+    let size = splat.size;
+
+    let quad_verts = array<vec2<f32>, 6>(
+    vec2<f32>(-size.x, size.y),  
+    vec2<f32>(-size.x, -size.y), 
+    vec2<f32>(size.x,  -size.y),  
+    vec2<f32>(size.x, -size.y),  
+    vec2<f32>( size.x,  size.y),  
+    vec2<f32>(-size.x,  size.y),  
+    );
+
+
 
     let offset = quad_verts[vert_idx];
-    splat.position = vec2<f32>(splat.position.x + offset.x, splat.position.y + offset.y);
+    let position = vec2<f32>(splat.position.x + offset.x, splat.position.y + offset.y);
 
-    out.position = vec4<f32>(splat.position, 0.0, 1.0);
+    out.position = vec4<f32>(position, 0.0, 1.0);
     return out;
 }
 
