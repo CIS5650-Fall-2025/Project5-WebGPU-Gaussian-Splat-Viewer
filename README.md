@@ -27,7 +27,15 @@
 | **Truck** | **Train** |
 | ![](images/truck_1.png)   | ![](images/train_1.png)   |
 
-### WebGPU Gaussian Splat Viewer
+### WebGPU Gaussian Splat and Point Cloud Viewer
+
+A point cloud is the main input to the Gaussian splatting rendering process.
+
+| Bonsai | Bicycle |
+|----------|----------|
+| ![](images/pc_bonsai_1.gif)   | ![](images/pc_bicycle_1.gif)   |
+| **Truck** | **Train** |
+| ![](images/pc_truck_1.gif)   | ![](images/pc_train_1.gif)   |
 
 - Compare your results from point-cloud and gaussian renderer, what are the differences?
 - For gaussian renderer, how does changing the workgroup-size affect performance? Why do you think this is?
