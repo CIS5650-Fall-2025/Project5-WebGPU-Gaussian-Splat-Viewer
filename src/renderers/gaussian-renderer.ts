@@ -37,17 +37,26 @@ export default function get_renderer(
 
   const nulling_data = new Uint32Array([0]);
   const f32_size = 4;
-  const splat_size = 3 * f32_size +  // x,y,z at f32
-                     1 * f32_size;   // radius at f32
+  const u32_size = 4;
+
+  const splat_size = 2 * u32_size + // xyz & radius at u32 x 2
+                      2 * u32_size + // color
+                      2 * u32_size; // conic_N_opacity
+                      
   const num_points = pc.num_points;
+  const splat_buffer_size = num_points * splat_size;
+
   const guassian_splat_buffer = createBuffer(
     device, 'gaussian splat buffer', 
-    num_points * splat_size, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
+    splat_buffer_size, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
 
   const gs_indirect_draw_param = new Uint32Array([6, 0, 0, 0]); // 6 vertices per quad
   const gs_render_launch_param_buffer = createBuffer(
     device, 'gs render launch param buffer', 
     4 * f32_size, GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST, gs_indirect_draw_param);
+  const sh_deg_buffer = createBuffer(
+    device, 'sh degree buffer', 
+    1 * f32_size, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, new Float32Array([pc.sh_deg]));
   // ===============================================
   //    Create Compute Pipeline and Bind Groups
   // ===============================================
@@ -57,7 +66,9 @@ export default function get_renderer(
     label: 'preprocess projection bind group layout',
     entries: [
       {binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' }},
-      {binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' }}
+      {binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' }},
+      {binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' }},
+      {binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' }}
     ],
   }); 
   const gs_preprocess_bind_group_layout = device.createBindGroupLayout({
@@ -103,6 +114,8 @@ export default function get_renderer(
     entries: [
       {binding: 0, resource: { buffer: camera_buffer }},
       {binding: 1, resource: { buffer: pc.gaussian_3d_buffer }},
+      {binding: 2, resource: { buffer: pc.sh_buffer }},
+      {binding: 3, resource: { buffer: sh_deg_buffer }},
     ],
   });
 
@@ -156,6 +169,11 @@ export default function get_renderer(
         binding: 2, 
         visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, 
         buffer: { type: 'uniform' }
+      },
+      {
+        binding: 3, 
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, 
+        buffer: { type: 'read-only-storage' }
       }
     ],
   });
@@ -167,6 +185,7 @@ export default function get_renderer(
       {binding: 0, resource: { buffer: guassian_splat_buffer }},
       {binding: 1, resource: { buffer: gs_multiplier_buffer }},
       {binding: 2, resource: { buffer: camera_buffer }},
+      {binding: 3, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer }},
     ],
   });
 
@@ -184,7 +203,21 @@ export default function get_renderer(
     fragment: {
       module: render_shader,
       entryPoint: 'fs_main',
-      targets: [{ format: presentation_format }],
+      targets: [{
+        format: presentation_format,
+        blend: {
+          color: {
+            srcFactor: 'src-alpha',
+            dstFactor: 'one-minus-src-alpha',
+            operation: 'add',
+          },
+          alpha: {
+            srcFactor: 'one',
+            dstFactor: 'one-minus-src-alpha',
+            operation: 'add',
+          }
+        }
+      }],
     },
     primitive: {
       topology: 'triangle-list',
@@ -230,7 +263,7 @@ export default function get_renderer(
       device.queue.writeBuffer(
         guassian_splat_buffer,
         0,  // destination offset
-        new Float32Array(num_points * splat_size / f32_size)  // Reset splat buffer to 0
+        new Uint32Array(splat_buffer_size / u32_size)  // Reset splat buffer to 0
       );
 
       const encoder = device.createCommandEncoder({

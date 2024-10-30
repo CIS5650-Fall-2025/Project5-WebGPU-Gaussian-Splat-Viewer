@@ -58,14 +58,17 @@ struct Gaussian {
 
 struct Splat {
     //TODO: store information for 2D splat rendering
-    screen_pos: vec3<f32>,
-    radius: f32,
+    ndc_pos_N_radius: array<u32,2>,
+    color: array<u32,2>,
+    conic_N_opacity: array<u32,2>
 };
 
 //TODO: bind your data here
 
 @group(0) @binding(0) var<uniform> camera: CameraUniforms;
 @group(0) @binding(1) var<storage, read> gaussians : array<Gaussian>;
+@group(0) @binding(2) var<storage, read> sh_coefs: array<u32>;
+@group(0) @binding(3) var<uniform> sh_deg_in: u32;
 
 @group(1) @binding(0) var<storage, read_write> splats: array<Splat>;
 @group(1) @binding(1) var<uniform> gs_multiplier: f32;
@@ -78,7 +81,17 @@ struct Splat {
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
     //TODO: access your binded sh_coeff, see load.ts for how it is stored
-    return vec3<f32>(0.0);
+    // r g b r 
+    let index = splat_idx * 24 + c_idx / 2 * 3 + c_idx % 2;
+    if (c_idx % 2 == 0u) {
+        let rg = unpack2x16float(sh_coefs[index]);
+        let br = unpack2x16float(sh_coefs[index + 1]);
+        return vec3<f32>(rg.x, rg.y, br.x);
+    } else {
+        let br = unpack2x16float(sh_coefs[index]);
+        let gb = unpack2x16float(sh_coefs[index + 1]);
+        return vec3<f32>(br.y, gb.x, gb.y);
+    }
 }
 
 // spherical harmonics evaluation with Condon–Shortley phase
@@ -137,7 +150,8 @@ fn get_rot_matrix(rot: array<u32,2>) -> mat3x3<f32> {
 fn get_scale_matrix(scale: array<u32,2>, local_gs_multiplier: f32) -> mat3x3<f32> {
     let scale_xy = unpack2x16float(scale[0]);
     let scale_z_ = unpack2x16float(scale[1]);
-    let scale_vec3 = vec3<f32>(scale_xy.x, scale_xy.y, scale_z_.x);
+    var scale_vec3 = vec3<f32>(scale_xy.x, scale_xy.y, scale_z_.x);
+    scale_vec3 = exp(scale_vec3);
     return mat3x3<f32>(
         scale_vec3.x * local_gs_multiplier, 0.0, 0.0,
         0.0, scale_vec3.y * local_gs_multiplier, 0.0,
@@ -234,14 +248,16 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let pos_xy = unpack2x16float(gaussians[idx].pos_opacity[0]); // First u32 contains x,y as f16
     let pos_za = unpack2x16float(gaussians[idx].pos_opacity[1]); // Second u32 contains z,opacity as f16
     let global_pos = vec3<f32>(pos_xy.x, pos_xy.y, pos_za.x);
-    let unhomogenized_screen_pos = camera.proj * camera.view * vec4<f32>(global_pos, 1.0);
-    let homogenized_screen_pos = unhomogenized_screen_pos.xyz / unhomogenized_screen_pos.w;
-    let pixel_pos = vec2<f32>(homogenized_screen_pos.x * 0.5 + 0.5, 
-                              homogenized_screen_pos.y * 0.5 + 0.5); // uv center
+    let view_pos = camera.view * vec4<f32>(global_pos, 1.0);
+    let unhomogenized_pos = camera.proj * camera.view * vec4<f32>(global_pos, 1.0);
+    let homogenized_pos = unhomogenized_pos.xyz / unhomogenized_pos.w;
+    let pixel_pos = vec2<f32>(homogenized_pos.x * 0.5 + 0.5, 
+                              homogenized_pos.y * 0.5 + 0.5); // uv center
                               
     // check if the quad is valid
-    if (homogenized_screen_pos.x <= -1.2 || homogenized_screen_pos.x >= 1.2 ||
-        homogenized_screen_pos.y <= -1.2 || homogenized_screen_pos.y >= 1.2) {
+    if (homogenized_pos.x <= -1.2 || homogenized_pos.x >= 1.2 ||
+        homogenized_pos.y <= -1.2 || homogenized_pos.y >= 1.2) || 
+        view_pos.z < 0.0 {
         return;
     }
     // store pos
@@ -263,34 +279,44 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let lambda1 = mid + sqrt(max(0.1, mid * mid - det));
     let lambda2 = mid - sqrt(max(0.1, mid * mid - det));
     let radius = ceil(3.0 * sqrt(max(lambda1, lambda2)));
-    // find uv
+    // find opacity
+    let opacity = 1.0 / (1.0 + exp(-pos_za.y));
 
     // find clamped quad bounds
 
     // store pos, radius & uv
     var this_splat_index = idx; // should be sort_infos.keys_size
     atomicAdd(&sort_infos.keys_size, 1u);
-    splats[this_splat_index].screen_pos = homogenized_screen_pos;
-    splats[this_splat_index].radius = radius / 100.0;
+    let packed_pos_xy = pack2x16float(vec2<f32>(homogenized_pos.x, homogenized_pos.y));
+    let packed_pos_zNradius = pack2x16float(vec2<f32>(homogenized_pos.z, radius));
+    splats[this_splat_index].ndc_pos_N_radius = array<u32,2>(packed_pos_xy, packed_pos_zNradius);
     // compute color
-
-
-    // if (this_splat_index % keys_per_dispatch == 0u) {
-    //     atomicAdd(&sort_dispatch.dispatch_x, 1u);
-    // }
+    let lookdir = normalize(global_pos - camera.view_inv[3].xyz);
+    let color = computeColorFromSH(lookdir, idx, sh_deg_in);
+    let packed_color_0 = pack2x16float(vec2<f32>(color.x, color.y));
+    let packed_color_1 = pack2x16float(vec2<f32>(color.z, 0.0));
+    splats[this_splat_index].color = array<u32,2>(packed_color_0, packed_color_1);
+    // store conic & opacity
+    let packed_conic_0 = pack2x16float(vec2<f32>(conic.x, conic.y));
+    let packed_conic_1 = pack2x16float(vec2<f32>(conic.z, opacity));
+    splats[this_splat_index].conic_N_opacity = array<u32,2>(packed_conic_0, packed_conic_1);
 
     // append indices and depths
     sort_indices[this_splat_index] = this_splat_index;
-    sort_depths[this_splat_index] = homogenized_screen_pos.z;
+    sort_depths[this_splat_index] = bitcast<f32>(100.0 - view_pos.z);
 
     // prepare for radix sort
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
+    if (this_splat_index % keys_per_dispatch == 0u) {
+        atomicAdd(&sort_dispatch.dispatch_x, 1u);
+    }
+
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
-    let current_dispatches = (this_splat_index + 1u + keys_per_dispatch - 1u) / keys_per_dispatch;
+    // let current_dispatches = (this_splat_index + 1u + keys_per_dispatch - 1u) / keys_per_dispatch;
     
     // update dispatch_x if count needs more dispatches
-    let current_dispatch_x = atomicLoad(&sort_dispatch.dispatch_x);
-    if (current_dispatches > current_dispatch_x) {
-        atomicStore(&sort_dispatch.dispatch_x, current_dispatches);
-    }
+    // let current_dispatch_x = atomicLoad(&sort_dispatch.dispatch_x);
+    // if (current_dispatches > current_dispatch_x) {
+    //     atomicStore(&sort_dispatch.dispatch_x, current_dispatches);
+    // }
 }
