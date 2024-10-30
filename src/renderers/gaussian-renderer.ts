@@ -47,7 +47,7 @@ export default function get_renderer(
   })
 
   
-  const indirectdraw_host = new Uint32Array([6, 0, 0, 0]);
+  const indirectdraw_host = new Uint32Array([6, pc.num_points, 0, 0]);
   device.queue.writeBuffer(indirectdraw_buffer, 0, indirectdraw_host.buffer);
 
 
@@ -61,7 +61,7 @@ export default function get_renderer(
   device.queue.writeBuffer(nulling_buffer, 0, nulling_data.buffer);
 
   
-  const splatData = new Float32Array(pc.num_points * 8);
+  const splatData = new Uint32Array(pc.num_points * 6);
 
 
   const splatBuffer = createBuffer(
@@ -150,7 +150,23 @@ export default function get_renderer(
             code: renderWGSL,
         }),
         entryPoint: "fs_main",
-        targets: [{format: presentation_format}]
+        targets: [
+          {
+              format: presentation_format,
+              blend: {
+                  color: {
+                    operation: 'add',
+                    srcFactor: 'one',
+                    dstFactor: 'one-minus-src-alpha',
+                  },
+                  alpha: {
+                    operation: 'add',
+                    srcFactor: 'one',
+                    dstFactor: 'one-minus-src-alpha',
+                  },
+              },
+          },
+      ],
     }
   });
  
@@ -158,7 +174,8 @@ export default function get_renderer(
     label: 'Splat Bind Group',
     layout: renderPipeline.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: splatBuffer } },
-              { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } }
+              { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
+              { binding: 2, resource: { buffer: camera_buffer } }
       ]
     ,
     
@@ -178,6 +195,7 @@ export default function get_renderer(
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
 
       encoder.copyBufferToBuffer(nulling_buffer, 0, sorter.sort_info_buffer, 0, 4)
+      encoder.copyBufferToBuffer(nulling_buffer, 0, sorter.sort_dispatch_indirect_buffer, 0, 4)
 
 
       const computePass = encoder.beginComputePass({
@@ -198,7 +216,7 @@ export default function get_renderer(
 
       
 
-      //sorter.sort(encoder);
+      sorter.sort(encoder);
 
       encoder.copyBufferToBuffer(sorter.sort_info_buffer, 0, indirectdraw_buffer, 4, 4)
 
@@ -213,7 +231,6 @@ export default function get_renderer(
         }]
       })
       render_pass.setPipeline(renderPipeline);
-     
       render_pass.setBindGroup(0, splatBindGroup);
       //render_pass.setVertexBuffer(0, splatBuffer);
       render_pass.drawIndirect(indirectdraw_buffer, 0);

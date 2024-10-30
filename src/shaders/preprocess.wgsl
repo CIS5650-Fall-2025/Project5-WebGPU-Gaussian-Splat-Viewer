@@ -46,7 +46,7 @@ struct CameraUniforms {
 
 struct RenderSettings {
     gaussian_scaling: f32,
-    sh_deg: f32,
+    sh_deg: u32,
 }
 
 struct Gaussian {
@@ -57,9 +57,10 @@ struct Gaussian {
 
 struct Splat {
     //TODO: store information for 2D splat rendering
-    position: vec2<f32>, 
-    size: vec2<f32>,          
-    color: vec3<f32>, 
+    packedposition: u32, 
+    packedsize: u32,          
+    packedcolor: array<u32,2>, 
+    packedconic_opacity: array<u32,2>
 };
 
 //TODO: bind your data here
@@ -67,7 +68,7 @@ struct Splat {
 var<storage, read_write> splatBuffer: array<Splat>;
 
 @group(0) @binding(1)
-var<storage, read> sh_buffer: array<vec3<f32>>;
+var<storage, read> sh_buffer: array<u32>;
 
 @group(0) @binding(2)
 var<storage, read> gaussian3d_buffer: array<Gaussian>;
@@ -92,8 +93,14 @@ var<storage, read_write> sort_dispatch: DispatchIndirect;
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
-    //TODO: access your binded sh_coeff, see load.ts for how it is stored
-   return vec3<f32>(1.0);
+    let base_index = splat_idx * 24 + (c_idx / 2) * 3 + c_idx % 2;
+    let color01 = unpack2x16float(sh_buffer[base_index + 0]);
+    let color23 = unpack2x16float(sh_buffer[base_index + 1]);
+    
+    if (c_idx % 2 == 0) {
+        return vec3f(color01.x, color01.y, color23.x);
+    }
+    return vec3f(color01.y, color23.x, color23.y);
 }
 
 // spherical harmonics evaluation with Condon–Shortley phase
@@ -140,17 +147,18 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 
     let gaussian = gaussian3d_buffer[idx];
     let xy = unpack2x16float(gaussian.pos_opacity[0]);
-    let z = unpack2x16float(gaussian.pos_opacity[1]);
-    let xyz = vec3<f32>(xy, z.x);
-    let alpha = z.y;
+    let z1 = unpack2x16float(gaussian.pos_opacity[1]);
+    let xyz = vec3<f32>(xy, z1.x);
+    let alpha = z1.y;
 
+    let viewPos = (camera.view*vec4<f32>(xyz, 1.0f)).xyz;
     var positionNDC = camera.proj * (camera.view * vec4<f32>(xyz, 1.0));
     
     positionNDC/=positionNDC.w;
     let boundary  = 1.2f;
 
     if(positionNDC.x < -boundary || positionNDC.x> boundary ||positionNDC.y < -boundary || positionNDC.y > boundary 
-    || positionNDC.z < 0.0 || positionNDC.z > 1.0){
+    || positionNDC.z < 0.0 || positionNDC.z > 1.0f){
         return;
     }
 
@@ -164,11 +172,15 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         scaleXY.y, 
         scaleZ.x));
 
+    let r =  quatWX.x;
+    let x =  quatWX.y;
+    let y = quatYZ.x;
+    let z = quatYZ.y;
 
     let rotationMatrix = mat3x3<f32>(
-        1.0f - 2.0f * (quatYZ.x * quatYZ.x + quatYZ.y * quatYZ.y), 2.0f * (quatWX.y * quatYZ.x - quatWX.x * quatYZ.y), 2.0f * (quatWX.y * quatYZ.y + quatWX.x * quatYZ.x),
-        2.0f * (quatWX.y * quatYZ.x + quatWX.x * quatYZ.y), 1.0f - 2.0f * (quatWX.y * quatWX.y + quatYZ.y * quatYZ.y), 2.0f * (quatYZ.x * quatYZ.y - quatWX.x * quatWX.y),
-        2.0f * (quatWX.y * quatYZ.y - quatWX.x * quatYZ.x), 2.0f * (quatYZ.x * quatYZ.y + quatWX.x * quatWX.y), 1.0f - 2.0f * (quatWX.y * quatWX.y + quatYZ.x * quatYZ.x)
+        1.f - 2.f * (y * y + z * z), 2.f * (x * y - r * z), 2.f * (x * z + r * y),
+		2.f * (x * y + r * z), 1.f - 2.f * (x * x + z * z), 2.f * (y * z - r * x),
+		2.f * (x * z - r * y), 2.f * (y * z + r * x), 1.f - 2.f * (x * x + y * y)
     );
 
     let scaleMatrix = mat3x3<f32>(
@@ -187,7 +199,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 
     let J = mat3x3<f32>(
         camera.focal.x / t.z, 0.0f, -(camera.focal.x * t.x)/(t.z * t.z),
-        0.0f, camera.focal.y / t.z, -(camera.focal.y * t.y)/(t.x * t.z),
+        0.0f, camera.focal.y / t.z, -(camera.focal.y * t.y)/(t.z * t.z),
         0.0, 0.0, 0.0
     );
 
@@ -212,7 +224,9 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let cov_2D = vec3<f32>(cov[0][0], cov[0][1], cov[1][1]);
     //radius
     let det = (cov_2D.x * cov_2D.z - cov_2D.y * cov_2D.y);
-
+    if (det == 0){
+        return;
+    }
     let mid = 0.5f * (cov_2D.x + cov_2D.z);
     let lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
     let lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
@@ -221,9 +235,8 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 
     let maxNDCsize = vec2( 2.0f * radius, 2.0f * radius)/camera.viewport;
 
-
     //testing
-    
+    let test12345 = sort_infos.padded_size;
     let testing2 = sh_buffer[0];
     let render = renderSettings.gaussian_scaling;
     let testing3 = sort_depths[0];
@@ -232,8 +245,22 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 
     let index = atomicAdd(&sort_infos.keys_size, 1u);
     sort_indices[index] = index;
-    splatBuffer[index].position = positionNDC.xy;
-    splatBuffer[index].size = maxNDCsize;
+    sort_depths[index]= bitcast<u32>(100.0 - viewPos.z);
+
+    splatBuffer[index].packedposition = pack2x16float(positionNDC.xy);
+    splatBuffer[index].packedsize = pack2x16float(maxNDCsize);
+
+    let dir =normalize(xyz - camera.view_inv[2].xyz);
+    let color = computeColorFromSH(dir, idx, renderSettings.sh_deg);
+    splatBuffer[index].packedcolor = array<u32, 2>(pack2x16float(color.rg), pack2x16float(vec2<f32>(color.b, 1.0f)));
+
+    let conic = vec3<f32>(
+        cov_2D.z * (1.f / det), -cov_2D.y * (1.f / det), cov_2D.x * (1.f / det)
+    );
+    let op = 1.0f / (1.0f + exp(-alpha));
+    splatBuffer[index].packedconic_opacity = array<u32, 2>(pack2x16float(conic.xy), pack2x16float(vec2<f32>(conic.z, op)));
+    
+
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     if (index % keys_per_dispatch == 0){
