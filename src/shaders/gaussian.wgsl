@@ -1,20 +1,24 @@
+
+@group(0) @binding(0)
+var<storage,read> splats: array<Splat>;
+@group(0) @binding(1)
+var<storage,read> sort_indices:array<u32>;
+@group(0) @binding(2)
+var<uniform> camera: CameraUniforms;
+
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     //TODO: information passed from vertex shader to fragment shader
-    @location(0) color:vec3<f32>,
-    @location(1) conic: vec2<f32>,
-    @location(2) rec_minbound: vec2<f32>,
-    @location(3) rec_maxbound: vec2<f32>,
-    @location(4) radius:f32
+    @location(0) color: vec4f,
+    @location(1) conic_opacity: vec4f,
+    @location(2) center: vec2f,
 };
 
 struct Splat {
-    //TODO: information defined in preprocess compute shader
-    color: vec3<f32>,
-    radius: f32,
-    depths: f32,
-    conic: vec2f,
-    projpos: vec2f
+    //TODO: store information for 2D splat rendering
+    color: array<u32,2>,
+    radius_depths_pos: array<u32,2>,
+    conic: array<u32,2>
 };
 
 struct CameraUniforms {
@@ -31,57 +35,63 @@ struct Gaussian {
     rot: array<u32,2>,
     scale: array<u32,2>
 }
-@group(0) @binding(0)
-var<uniform> camera: CameraUniforms;
 
-@group(1) @binding(0)
-var<storage,read> gaussians: array<Gaussian>;
-@group(1) @binding(1)
-var<storage,read> splats: array<Splat>;
-
+// Quad vertices in NDC space (counter-clockwise)
+const VERTICES = array<vec2<f32>, 6>(
+    vec2f(-1.0, -1.0), 
+    vec2f( 1.0, -1.0), 
+    vec2f(-1.0,  1.0),
+    vec2f(-1.0,  1.0), 
+    vec2f( 1.0, -1.0), 
+    vec2f( 1.0,  1.0)
+);
 @vertex
 fn vs_main(
-    @builtin(vertex_index) in_vertex_index: u32,
+    @builtin(vertex_index) in_vertex_index: u32,@builtin(instance_index) in_instance_index:u32
 ) -> VertexOutput {
-    //TODO: reconstruct 2D quad based on information from splat, pass 
     var out: VertexOutput;
-    out.position = vec4<f32>(1. ,1. , 0., 1.);
-    let BLOCK_X = 16;
-    let BLOCK_Y = 16; // tile sizes
-    let blockSize = vec2<i32>(BLOCK_X, BLOCK_Y);
-    // block count for x,y axes
-    let grid = (camera.viewport.xy + vec2f(blockSize.xy) - 1) / vec2f(blockSize.xy);
-    // out.position= vec4f(vec2f(splats[in_vertex_index].projpos),0.,1.);//uv
-    let vertex = gaussians[in_vertex_index];
-    let a = unpack2x16float(vertex.pos_opacity[0]);
-    let b = unpack2x16float(vertex.pos_opacity[1]);
-    let pos = vec4<f32>(a.x, a.y, b.x, 1.);
 
-    let viewprojmat = camera.proj*camera.view;
-    out.position = viewprojmat*pos;
-
-    out.rec_minbound = vec2<f32>(
-        (min(grid.x, max(0, ((out.position.x - splats[in_vertex_index].radius) / f32(BLOCK_X))))),
-        (min(grid.y, max(0, ((out.position.y - splats[in_vertex_index].radius) / f32(BLOCK_Y)))))
-    );  
-    out.rec_maxbound = vec2<f32>(
-        (min(grid.x, (max(0, ((out.position.x + splats[in_vertex_index].radius + f32(BLOCK_X) - 1) / f32(BLOCK_X)))))),
-        (min(grid.y, (max(0, ((out.position.y + splats[in_vertex_index].radius + f32(BLOCK_Y) - 1) / f32(BLOCK_Y))))))
+    let splat = splats[sort_indices[in_instance_index]];
+    let xy = unpack2x16float(splat.radius_depths_pos[1]);
+    let wh = unpack2x16float(splat.radius_depths_pos[0]);
+    let rg = unpack2x16float(splat.color[0]);
+    let ba = unpack2x16float(splat.color[1]);
+    let conic = unpack2x16float(splat.conic[0]);
+    let opacity = unpack2x16float(splat.conic[1]);
+    let pos = array<vec2f, 6>(
+        vec2f(xy.x - wh.x * 2.0f, xy.y + wh.y * 2.0f),
+        vec2f(xy.x - wh.x * 2.0f, xy.y - wh.y * 2.0f),
+        vec2f(xy.x + wh.x * 2.0f, xy.y - wh.y * 2.0f),
+        vec2f(xy.x + wh.x * 2.0f, xy.y - wh.y * 2.0f),
+        vec2f(xy.x + wh.x * 2.0f, xy.y + wh.y * 2.0f),
+        vec2f(xy.x - wh.x * 2.0f, xy.y + wh.y * 2.0f),
     );
-    out.conic = splats[in_vertex_index].conic;
-    out.color = splats[in_vertex_index].color;
-    out.radius = splats[in_vertex_index].radius;
+    
+    out.position = vec4(pos[in_vertex_index].x, pos[in_vertex_index].y, 0.0f, 1.0f);
+    out.color = vec4(rg.x, rg.y, ba.x, ba.y);;
+    out.conic_opacity = vec4f(conic.x, conic.y, opacity.x, opacity.y);
+    out.center = vec2f(xy.x, xy.y);
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let closestPoint = clamp(in.position.xy,in.rec_minbound,in.rec_maxbound);
-    let distance = length(closestPoint-in.position.xy);
-    var color = vec4<f32>(0., 0., 0., 1.);
-    if(distance <= in.radius)
-    {
-        color = f32(distance - in.radius)*color;
+    var position = (in.position.xy / camera.viewport) * 2.0f - 1.0f;
+    position.y *= -1.0f;
+    
+    var offset = (position.xy - in.center.xy) * camera.viewport * 0.5f;
+    offset.x *= -1.0f;
+
+    var power = -0.5f * (
+        in.conic_opacity.x * pow(offset.x, 2.0f) + 
+        in.conic_opacity.z * pow(offset.y, 2.0f)
+    );
+    power -= in.conic_opacity.y * offset.x * offset.y;
+
+    if (power > 0.0f) {
+        return vec4f(0.0f, 0.0f, 0.0f, 0.0f);
     }
-    return color;
+    
+    let alpha = min(0.99f, in.conic_opacity.w * exp(power));
+    return in.color * alpha;
 }
