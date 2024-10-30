@@ -24,7 +24,7 @@ struct DispatchIndirect {
     dispatch_x: atomic<u32>,
     dispatch_y: u32,
     dispatch_z: u32,
-}
+};
 
 struct SortInfos {
     keys_size: atomic<u32>,  // instance_count in DrawIndirect
@@ -33,7 +33,7 @@ struct SortInfos {
     passes: u32,
     even_pass: u32,
     odd_pass: u32,
-}
+};
 
 struct CameraUniforms {
     view: mat4x4<f32>,
@@ -47,7 +47,7 @@ struct CameraUniforms {
 struct RenderSettings {
     gaussian_scaling: f32,
     sh_deg: f32,
-}
+};
 
 struct Gaussian {
     pos_opacity: array<u32,2>,
@@ -56,21 +56,23 @@ struct Gaussian {
 };
 
 struct Splat {
-    //TODO: store information for 2D splat rendering
     packed_pos: u32,
-    packed_size: u32
-    packed_color: array(u32, 2),
-    packed_conic_opacity: array(u32, 2),
+    packed_size: u32,
+    packed_color: array<u32, 2>,
+    packed_conic_opacity: array<u32, 2>,
 };
 
 //TODO: bind your data here
 @group(0) @binding(0)
 var<uniform> camera: CameraUniforms;
+@group(0) @binding(1)
 var<uniform> render_settings: RenderSettings;
 
 @group(1) @binding(0)
 var<storage, read> gaussians: array<Gaussian>;
+@group(1) @binding(1)
 var<storage, read_write> splats: array<Splat>;
+@group(1) @binding(2)
 var<storage, read> colors: array<u32>;
 
 @group(2) @binding(0)
@@ -141,11 +143,11 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let pos_xy = unpack2x16float(gaussian.pos_opacity[0]);
     let pos_za = unpack2x16float(gaussian.pos_opacity[1]);
     let pos = vec4f(pos_xy, pos_za.x, 1.0);
-    let opacity = 1.0f / (1.0f + exp(-pos_za.));
+    let opacity = 1.0f / (1.0f + exp(-pos_za.y));
 
     // get ndc
     let view_pos = camera.view * pos;
-    let ndc = camera.proj * view_pos;
+    var ndc = camera.proj * view_pos;
     ndc /= ndc.w;
 
     // view-frustum culling
@@ -167,7 +169,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y - w * z)      , 2.0 * (x * z + w * y),
         2.0 * (x * y + w * z)      , 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z - w * x),
         2.0 * (x * z - w * y)      , 2.0 * (y * z + w * x)      , 1.0 - 2.0 * (x * x + y * y)
-    )
+    );
 
     // get scale
     let scale_xy = exp(unpack2x16float(gaussian.scale[0]));
@@ -218,7 +220,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let radius = ceil(3.0f * sqrt(max(lambda1, lambda2)));
 
     let cam_pos = -camera.view[3].xyz;
-    let direction = normalize(pos - camPos);
+    let direction = normalize(pos.xyz- cam_pos);
     let color = computeColorFromSH(direction, idx, u32(render_settings.sh_deg));
 
     let conic = vec3f(cyy / det, -cxy / det, cxx / det);
