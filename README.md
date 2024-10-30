@@ -8,7 +8,7 @@
 
 ## Live Demo
 
-[![](img/thumb.png)](http://TODO.github.io/Project4-WebGPU-Forward-Plus-and-Clustered-Deferred)
+[Live Demo](https://solemnwind.github.io/Project5-WebGPU-Gaussian-Splat-Viewer/) (Open with Chrome)
 
 ## Demo Video/GIF
 
