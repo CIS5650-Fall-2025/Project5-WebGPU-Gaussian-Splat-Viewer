@@ -5,13 +5,14 @@
 * Joshua Smith
   * [LinkedIn](https://www.linkedin.com/in/joshua-smith-32b165158/)
 * Tested on: Ubuntu 20.04, Ryzen 9 3900x @ 4.6GHz, 24GB RTX 4090 (Personal)
-### Live Demo
+### Live Demo (Click image for online demo)
+You need to download scene/camera files available [here](https://drive.google.com/drive/folders/1UbcFvkwZhcdnhAlpua7n-UUjxDaeiYJC?usp=sharing)
 
-[![](img/thumb.png)](http://TODO.github.io/Project4-WebGPU-Forward-Plus-and-Clustered-Deferred)
+[![](images/bonsai_link_img.png)](https://joshmsmith44.github.io/Project5-WebGPU-Gaussian-Splat-Viewer/)
 
-### Demo Video/GIF
+### Demo Video
 
-[![](img/video.mp4)](TODO)
+[![](images/gaussian_splatting_vid.mp4)](Demo Video)
 
 ### (TODO: Your README)
 
