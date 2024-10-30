@@ -5,13 +5,12 @@
 * Maya Diaz Huizar
 * Tested on: Google Chrome 132.0 on Windows 10, AMD Ryzen 9 5900X @ 3.7GHz 32GB RAM, Nvidia RTX 3080 10GB 
 
-## Live Demo
-
-[![](img/thumb.png)](http://TODO.github.io/Project5-WebGPU-Gaussian-Splat-Viewer)
+## Live Demo (requires Chrome and a WebGPU compatible GPU)
+[Demo Link](https://aorus1.github.io/Project5-WebGPU-Gaussian-Splat-Viewer/)
 
 ## Demo Video
 
-[![Demo]()](images/demo.mp4)
+[![Demo Video]()](images/demo.mp4)
 
 ## Project Overview
 
