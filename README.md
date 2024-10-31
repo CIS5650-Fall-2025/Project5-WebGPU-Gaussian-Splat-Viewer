@@ -5,7 +5,7 @@
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 5**
 
 * Zixiao Wang
-* Tested on: (TODO) **Google Chrome 222.2** on
+* Tested on: Google Chrome Version 130.0. on
   Windows 11, i7-14700K @ 3.40 GHz 32GB, GTX 4070TI 12GB  4K Monitor (Personal PC)
 
 ### Live Demo
