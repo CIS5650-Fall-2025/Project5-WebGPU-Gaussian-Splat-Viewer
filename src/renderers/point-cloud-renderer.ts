@@ -59,8 +59,12 @@ export default function get_renderer(
   };
 
   return {
-    frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
+    frame: (texture_view: GPUTextureView) => {
+      const encoder = device.createCommandEncoder({
+        label: 'point cloud frame encoder'
+      });
       render(encoder, texture_view);
+      device.queue.submit([encoder.finish()]);
     },
 
     camera_buffer,

@@ -8,7 +8,7 @@ import { CameraControl } from '../camera/camera-control';
 import { time, timeReturn } from '../utils/simple-console';
 
 export interface Renderer {
-  frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => void,
+  frame: (texture_view: GPUTextureView) => void,
   camera_buffer: GPUBuffer,
 }
 
@@ -24,6 +24,13 @@ export default async function init(
   let pointcloud_renderer: Renderer | undefined; 
   let renderer: Renderer | undefined; 
   let cameras;
+  var gs_multiplier = 1.0;
+  let gs_multiplier_buffer = device.createBuffer({
+    label: 'gaussian multiplier',
+    size: 4,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(gs_multiplier_buffer, 0, new Float32Array([gs_multiplier]));
   
   const camera = new Camera(canvas, device);
   const control = new CameraControl(camera);
@@ -46,7 +53,7 @@ export default async function init(
 
   // Tweakpane: easily adding tweak control for parameters.
   const params = {
-    fps: 0.0,
+    dt: 0.0,
     gaussian_multiplier: 1,
     renderer: 'pointcloud',
     ply_file: '',
@@ -59,8 +66,9 @@ export default async function init(
   });
   pane.registerPlugin(TweakpaneFileImportPlugin);
   {
-    pane.addMonitor(params, 'fps', {
-      readonly:true
+    pane.addMonitor(params, 'dt', {
+      readonly:true,
+      label: 'dt (ms)'
     });
   }
   {
@@ -85,7 +93,7 @@ export default async function init(
       if (uploadedFile) {
         const pc = await load(uploadedFile, device);
         pointcloud_renderer = get_renderer_pointcloud(pc, device, presentation_format, camera.uniform_buffer);
-        gaussian_renderer = get_renderer_gaussian(pc, device, presentation_format, camera.uniform_buffer);
+        gaussian_renderer = get_renderer_gaussian(pc, device, presentation_format, camera.uniform_buffer, gs_multiplier_buffer);
         renderers = {
           pointcloud: pointcloud_renderer,
           gaussian: gaussian_renderer,
@@ -122,6 +130,10 @@ export default async function init(
       {min: 0, max: 1.5}
     ).on('change', (e) => {
       //TODO: Bind constants to the gaussian renderer.
+      gs_multiplier = e.value;
+      if (gs_multiplier_buffer) {
+        device.queue.writeBuffer(gs_multiplier_buffer, 0, new Float32Array([gs_multiplier]));
+      }
     });
   }
 
@@ -146,12 +158,12 @@ export default async function init(
 
   function frame() {
     if (ply_file_loaded && cam_file_loaded) {
-      params.fps=1.0/timeReturn()*1000.0;
+      params.dt = timeReturn();
       time();
-      const encoder = device.createCommandEncoder();
+      // const encoder = device.createCommandEncoder();
       const texture_view = context.getCurrentTexture().createView();
-      renderer.frame(encoder, texture_view);
-      device.queue.submit([encoder.finish()]);
+      renderer.frame(texture_view);
+      // device.queue.submit([encoder.finish()]);
     }
     requestAnimationFrame(frame);
   }
