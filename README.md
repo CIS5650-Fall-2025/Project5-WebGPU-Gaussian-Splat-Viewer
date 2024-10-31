@@ -28,6 +28,8 @@ In this Project, I implemented the 3D Gaussian Splat Viewer. The entire project 
 for Real-Time Radiance Field Rendering](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/).
 To start off, we need to create a point_cloud shader to cluster the points based on the scene input .ply file. After that, the preprocess shader will read the point cloud data as splats and transfer their position into the screen space. Then, radix sort is applied to sort the splats by their screen space position and depth. In the end, the processed data are fed back into Gaussian splat to render the points in the scene in real time.
 
+![](images/workflow.png)
+
 ### Performance Analysis
 
 #### Difference between Point-Cloud and Gaussian Renderer
@@ -50,3 +52,5 @@ Yes, the Number of Gaussians Affects Performance. The more Gaussians used, the m
 - [stats.js](https://github.com/mrdoob/stats.js)
 - [wgpu-matrix](https://github.com/greggman/wgpu-matrix)
 - Special Thanks to: Shrek Shao (Google WebGPU team) & [Differential Gaussian Renderer](https://github.com/graphdeco-inria/diff-gaussian-rasterization).
+- [Blending code reference](https://webgpufundamentals.org/webgpu/lessons/webgpu-transparency.html)
+- [indirect_draw](https://developer.mozilla.org/en-US/docs/Web/API/GPURenderPassEncoder/drawIndirect)
