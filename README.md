@@ -69,6 +69,22 @@ In the fragment shader, the screen-space offset from the splat’s center to the
 - Does view-frustum culling give performance improvement? Why do you think this is? 
 - Does number of guassians affect performance?  Why do you think this is? 
 
+![](images/squares.png)
+
+### Artifacts During Development
+
+![](images/blooper_4.png)
+
+From not indexing the spherical harmonics coefficients correctly.
+
+![](images/blooper_1.png)
+![](images/blooper_2.png)
+![](images/blooper_3.png)
+
+Flickering.
+
+![](images/bloopers_5.png)
+
 ### Credits
 
 - [Vite](https://vitejs.dev/)
