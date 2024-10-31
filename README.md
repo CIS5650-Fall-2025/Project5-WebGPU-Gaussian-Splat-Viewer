@@ -14,6 +14,7 @@
 
 ### Demo Video/GIF
 ![](images/ga_bike.png)
+![](images/ga_bike_move.gif)
 ![](images/ga_playroom_1.gif)
 
 
