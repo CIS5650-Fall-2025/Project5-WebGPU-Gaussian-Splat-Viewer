@@ -1,6 +1,6 @@
-# Project5-WebGPU-Gaussian-Splat-Viewer
+# WebGPU-Gaussian-Splat-Viewer
 
-University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 4
+University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 5
 
 * Matt Schwartz
 * Tested on: Google Chrome on Windows 10 22H2, Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz, NVIDIA GeForce RTX 2060
@@ -11,7 +11,7 @@ University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 4
 
 ### Live Demo
 
-[Click for link to live demo webpage](https://mzschwartz5.github.io/Project5-WebGPU-Gaussian-Splat-Viewer/)
+[Click for link to live demo webpage](https://mzschwartz5.github.io/WebGPU-Gaussian-Splat-Viewer/)
 
 (Note: you will need to download a `.ply` file from [this drive](https://drive.google.com/drive/u/2/folders/1UbcFvkwZhcdnhAlpua7n-UUjxDaeiYJC), along with its associated `cameras.json` file. Then, go to the above site and upload those files (may take half a minute or so). Finally, select "gaussian" from the drop down).
 
