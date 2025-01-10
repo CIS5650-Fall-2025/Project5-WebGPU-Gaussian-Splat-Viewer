@@ -25,17 +25,15 @@ struct VertexOutput {
 
 @vertex
 fn vs_main(
-    @builtin(vertex_index) in_vertex_index: u32,
-    @builtin(instance_index) in_instance_index: u32
+    @builtin(vertex_index) in_vertex_index: u32
 ) -> VertexOutput {
     var out: VertexOutput;
 
-    // let vertex = gaussians[in_instance_index];
-    // let a = unpack2x16float(vertex.pos_opacity[0]);
-    // let b = unpack2x16float(vertex.pos_opacity[1]);
-    // let pos = vec4<f32>(a.x, a.y, b.x, 1.);
+    let vertex = gaussians[in_vertex_index];
+    let a = unpack2x16float(vertex.pos_opacity[0]);
+    let b = unpack2x16float(vertex.pos_opacity[1]);
+    let pos = vec4f(a.x, a.y, b.x, 1.);
 
-    // TODO: MVP calculations
     out.position = camera.proj * camera.view * pos;
 
     return out;
