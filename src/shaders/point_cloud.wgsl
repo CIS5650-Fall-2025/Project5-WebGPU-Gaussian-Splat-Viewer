@@ -1,26 +1,26 @@
 struct CameraUniforms {
-    view: mat4x4<f32>,
-    view_inv: mat4x4<f32>,
-    proj: mat4x4<f32>,
-    proj_inv: mat4x4<f32>,
-    viewport: vec2<f32>,
-    focal: vec2<f32>
+    view: mat4x4f,
+    view_inv: mat4x4f,
+    proj: mat4x4f,
+    proj_inv: mat4x4f,
+    viewport: vec2f,
+    focal: vec2f
 };
 
 struct Gaussian {
-    pos_opacity: array<u32,2>,
-    rot: array<u32,2>,
-    scale: array<u32,2>
+    pos_opacity: array<u32, 2>,
+    rot: array<u32, 2>,
+    scale: array<u32, 2>
 }
 
 @group(0) @binding(0)
 var<uniform> camera: CameraUniforms;
 
 @group(1) @binding(0)
-var<storage,read> gaussians : array<Gaussian>;
+var<storage, read> gaussians: array<Gaussian>;
 
 struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
+    @builtin(position) position: vec4f,
 };
 
 @vertex
@@ -41,5 +41,5 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(1., 1., 0., 1.);
+    return vec4f(1., 1., 0., 1.);
 }

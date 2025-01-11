@@ -55,9 +55,9 @@ struct Gaussian {
     scale: array<u32,2>
 };
 
-struct Splat {
-    //TODO: store information for 2D splat rendering
-};
+// struct Splat {
+//     //TODO: store information for 2D splat rendering
+// };
 
 //TODO: bind your data here
 @group(2) @binding(0)
@@ -108,10 +108,35 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
     return  max(vec3<f32>(0.), result);
 }
 
-@compute @workgroup_size(workgroupSize,1,1)
+@compute @workgroup_size(workgroupSize, 1, 1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
     //TODO: set up pipeline as described in instruction
+
+    let pos_opacity0 = unpack2x16float(vertex.pos_opacity[0]);
+    let pos_opacity1 = unpack2x16float(vertex.pos_opacity[1]);
+    let rotation0    = unpack2x16float(vertex.rot[0]);
+    let rotation1    = unpack2x16float(vertex.rot[1]);
+    let scale0       = unpack2x16float(vertex.scale[0]);
+    let scale1       = unpack2x16float(vertex.scale[1]);
+
+    let pos = vec4f(pos_opacity0.x, pos_opacity0.y, pos_opacity1.x, 1.);
+    let opacity = pos_opacity1.y;
+    let rotation = vec4f(rotation0.xy, rotation1.xy);
+    var scale = vec4f(scale0.xy, scale1.xy);
+
+    // https://github.com/graphdeco-inria/diff-gaussian-rasterization/blob/main/cuda_rasterizer/forward.cu#L134-L138
+    let R = mat3x3f(
+        1.f - 2.f * (rotation.y * rotation.y + rotation.z * rotation.z), 2.f * (rotation.x * rotation.y - rotation.r * rotation.z), 2.f * (rotation.x * rotation.z + rotation.w * rotation.y),
+        2.f * (rotation.x * rotation.y + rotation.r * rotation.z), 1.f - 2.f * (rotation.x * rotation.x + rotation.z * rotation.z), 2.f * (rotation.y * rotation.z - rotation.r * rotation.x),
+        2.f * (rotation.x * rotation.z - rotation.r * rotation.y), 2.f * (rotation.y * rotation.z + rotation.r * rotation.x), 1.f - 2.f * (rotation.x * rotation.x + rotation.y * rotation.y)
+    );
+
+    // https://github.com/graphdeco-inria/diff-gaussian-rasterization/blob/main/cuda_rasterizer/forward.cu#L121-L124
+    var S = mat3x3f(1.0f); // S is a diagonal matrix
+    S[0][0] = gaussian_scaling * scale.x;
+    S[1][1] = gaussian_scaling * scale.y;
+    S[2][2] = gaussian_scaling * scale.z;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
