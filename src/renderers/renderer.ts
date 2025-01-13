@@ -43,7 +43,6 @@ export default async function init(
         alphaMode: 'opaque',
     });
 
-
     // Tweakpane: easily adding tweak control for parameters.
     const params = {
         fps: 0.0,
@@ -121,7 +120,7 @@ export default async function init(
             'gaussian_multiplier',
             { min: 0, max: 1.5 }
         ).on('change', (e) => {
-            //TODO: Bind constants to the gaussian renderer.
+            device.queue.writeBuffer(gaussian_renderer.renderSettingsBuffer, 0, new Float32Array([e.value]));
         });
     }
 

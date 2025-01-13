@@ -1,67 +1,73 @@
 struct CameraUniforms {
     view: mat4x4f,
-    view_inv: mat4x4f,
+    viewInv: mat4x4f,
     proj: mat4x4f,
-    proj_inv: mat4x4f,
+    projInv: mat4x4f,
     viewport: vec2f,
     focal: vec2f
 };
 
-struct Gaussian {
-    pos_opacity: array<u32, 2>,
-    rot: array<u32, 2>,
-    scale: array<u32, 2>
-}
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) center: vec2f,
+    @location(1) color: vec3f,
+    @location(2) conic: vec3f,
+    @location(3) opacity: f32
+};
+
+struct Splat {
+    pos: vec2f,
+    size: vec2f,
+    color: vec3f,
+    conic: vec3f,
+    opacity: f32
+};
 
 @group(0) @binding(0)
 var<uniform> camera: CameraUniforms;
 
 @group(1) @binding(0)
-var<storage, read> gaussians: array<Gaussian>;
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    //TODO: information passed from vertex shader to fragment shader
-};
-
-// struct Splat {
-//     //TODO: information defined in preprocess compute shader
-// };
+var<storage, read> splats: array<Splat>;
+@group(1) @binding(1)
+var<storage, read> sortIndices : array<u32>;
 
 @vertex
 fn vs_main(
-    @builtin(instance_index) instance_index: u32,
-    @builtin(vertex_index) in_vertex_index: u32
+    @builtin(instance_index) instanceIndex: u32,
+    @builtin(vertex_index) vertexIndex: u32
 ) -> VertexOutput {
-    //TODO: reconstruct 2D quad based on information from splat, pass 
-    // var out: VertexOutput;
-
     const vertices = array<vec2f, 4>(
-        vec2f(-0.01, -0.01),
-        vec2f( 0.01, -0.01),
-        vec2f(-0.01,  0.01),
-        vec2f( 0.01,  0.01)
+        vec2f(-1, -1),
+        vec2f( 1, -1),
+        vec2f(-1,  1),
+        vec2f( 1,  1)
     );
 
-    let vertex = gaussians[in_vertex_index];
+    let splat = splats[sortIndices[instanceIndex]];
 
-    let pos_opacity0 = unpack2x16float(vertex.pos_opacity[0]);
-    let pos_opacity1 = unpack2x16float(vertex.pos_opacity[1]);
-    let rotation0    = unpack2x16float(vertex.rot[0]);
-    let rotation1    = unpack2x16float(vertex.rot[1]);
-    let scale0       = unpack2x16float(vertex.scale[0]);
-    let scale1       = unpack2x16float(vertex.scale[1]);
-
-    let pos = vec4f(pos_opacity0.x, pos_opacity0.y, pos_opacity1.x, 1.);
-    let opacity = pos_opacity1.y;
-    let rotation = vec4f(rotation0.xy, rotation1.xy);
-    var scale = vec4f(scale0.xy, scale1.xy);
-
-    // out.position = vec4f(1. ,1. , 0., 1.);
-    return vec4f(vertices[in_vertex_index], 0.0, 1.0);
+    var out: VertexOutput;
+    out.position = vec4f(splat.pos + splat.size * vertices[vertexIndex], 0.0, 1.0);
+    out.center = (vec2f(0.5, -0.5) * splat.pos + 0.5) * camera.viewport;
+    out.color = splat.color;
+    out.opacity = splat.opacity;
+    out.conic = splat.conic;
+    return out;
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    return vec4f(1., 1., 1., 1, 1.);
+fn fs_main(
+    in: VertexOutput
+) -> @location(0) vec4f {
+    let d = in.center - in.position.xy;
+    let power = -0.5 * (in.conic.x * d.x * d.x + in.conic.z * d.y * d.y) - in.conic.y * d.x * d.y;
+
+    if (power > 0.0) { discard; }
+
+    let alpha = min(0.99, in.opacity * exp(power));
+
+    // Discard if alpha is less than 1/255
+    if (alpha < 0.00392156862) { discard; }
+
+    // Premultiplied alpha
+    return vec4f(in.color * alpha, alpha);
 }
