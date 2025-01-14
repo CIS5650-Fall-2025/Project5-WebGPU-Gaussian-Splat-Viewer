@@ -21,7 +21,7 @@ export default async function init(
     let cam_file_loaded = false;
     let renderers: { pointcloud?: Renderer, gaussian?: Renderer , gaussian_f16?: Renderer } = {};
     let gaussian_renderer: GaussianRenderer | undefined;
-    // let gaussian_renderer_f16: GaussianRenderer | undefined;
+    let gaussian_renderer_f16: GaussianRenderer | undefined;
     let pointcloud_renderer: Renderer | undefined;
     let renderer: Renderer | undefined;
     let cameras;
@@ -68,7 +68,7 @@ export default async function init(
             options: {
                 pointcloud: 'pointcloud',
                 gaussian: 'gaussian',
-                // gaussian_f16: 'gaussian_f16',
+                gaussian_f16: 'gaussian_f16',
             }
         }).on('change', (e) => {
             renderer = renderers[e.value];
@@ -87,11 +87,11 @@ export default async function init(
                     const pc = await load(uploadedFile, device);
                     pointcloud_renderer = get_renderer_pointcloud(pc, device, presentation_format, camera.uniform_buffer);
                     gaussian_renderer = get_renderer_gaussian(pc, device, presentation_format, camera.uniform_buffer);
-                    // gaussian_renderer_f16 = get_renderer_gaussian(pc, device, presentation_format, camera.uniform_buffer, true);
+                    gaussian_renderer_f16 = get_renderer_gaussian(pc, device, presentation_format, camera.uniform_buffer, true);
                     renderers = {
                         pointcloud: pointcloud_renderer,
                         gaussian: gaussian_renderer,
-                        // gaussian_f16: gaussian_renderer_f16,
+                        gaussian_f16: gaussian_renderer_f16,
                     };
                     renderer = renderers[params.renderer];
                     ply_file_loaded = true;
@@ -127,9 +127,9 @@ export default async function init(
             if (gaussian_renderer) {
                 device.queue.writeBuffer(gaussian_renderer.renderSettingsBuffer, 0, new Float32Array([e.value]));
             }
-            // if (gaussian_renderer_f16) {
-            //     device.queue.writeBuffer(gaussian_renderer_f16.renderSettingsBuffer, 0, new Float32Array([e.value]));
-            // }
+            if (gaussian_renderer_f16) {
+                device.queue.writeBuffer(gaussian_renderer_f16.renderSettingsBuffer, 0, new Float32Array([e.value]));
+            }
         });
     }
 

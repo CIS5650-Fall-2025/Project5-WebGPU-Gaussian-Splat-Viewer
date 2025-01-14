@@ -64,15 +64,17 @@ fn fs_main(
         unpack2x16float(in.conic.y)
     );
     let center = vec2f(unpack2x16float(in.center));
+    let color_opacity = vec4f(
+        unpack2x16float(in.color_opacity.x),
+        unpack2x16float(in.color_opacity.y)
+    );
+
     let d = center - in.position.xy;
     let power = 0.5 * (conic.x * d.x * d.x + conic.z * d.y * d.y) + conic.y * d.x * d.y;
 
     if (power < 0.0) { discard; }
 
-    let color_opacity = vec4f(
-        unpack2x16float(in.color_opacity.x),
-        unpack2x16float(in.color_opacity.y)
-    );
+
 
     let alpha = min(0.99, color_opacity.a * exp(-power));
 
