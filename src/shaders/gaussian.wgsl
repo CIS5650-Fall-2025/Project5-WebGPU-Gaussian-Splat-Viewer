@@ -4,23 +4,23 @@ struct CameraUniforms {
     proj: mat4x4f,
     projInv: mat4x4f,
     viewport: vec2f,
-    focal: vec2f
+    focal: vec2f,
+    clippingPlanes: vec2f
 };
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
-    @location(0) center: vec2f,
-    @location(1) color: vec3f,
-    @location(2) conic: vec3f,
-    @location(3) opacity: f32
+    // No inerpolation
+    @location(0) @interpolate(flat) center: u32,
+    @location(1) @interpolate(flat) color_opacity: vec2u,
+    @location(2) @interpolate(flat) conic: vec2u,
 };
 
 struct Splat {
-    pos: vec2f,
-    size: vec2f,
-    color: vec3f,
-    conic: vec3f,
-    opacity: f32
+    pos: u32,
+    size: u32,
+    color_opacity: vec2u,
+    conic: vec2u
 };
 
 @group(0) @binding(0)
@@ -44,12 +44,13 @@ fn vs_main(
     );
 
     let splat = splats[sortIndices[instanceIndex]];
+    let position = unpack2x16float(splat.pos);
+    let size = unpack2x16float(splat.size);
 
     var out: VertexOutput;
-    out.position = vec4f(splat.pos + splat.size * vertices[vertexIndex], 0.0, 1.0);
-    out.center = (vec2f(0.5, -0.5) * splat.pos + 0.5) * camera.viewport;
-    out.color = splat.color;
-    out.opacity = splat.opacity;
+    out.position = vec4f(position + size * vertices[vertexIndex], 0.0, 1.0);
+    out.center = pack2x16float((vec2f(0.5, -0.5) * position + 0.5) * camera.viewport);
+    out.color_opacity = splat.color_opacity;
     out.conic = splat.conic;
     return out;
 }
@@ -58,16 +59,26 @@ fn vs_main(
 fn fs_main(
     in: VertexOutput
 ) -> @location(0) vec4f {
-    let d = in.center - in.position.xy;
-    let power = -0.5 * (in.conic.x * d.x * d.x + in.conic.z * d.y * d.y) - in.conic.y * d.x * d.y;
+    let conic = vec4f(
+        unpack2x16float(in.conic.x),
+        unpack2x16float(in.conic.y)
+    );
+    let center = vec2f(unpack2x16float(in.center));
+    let d = center - in.position.xy;
+    let power = 0.5 * (conic.x * d.x * d.x + conic.z * d.y * d.y) + conic.y * d.x * d.y;
 
-    if (power > 0.0) { discard; }
+    if (power < 0.0) { discard; }
 
-    let alpha = min(0.99, in.opacity * exp(power));
+    let color_opacity = vec4f(
+        unpack2x16float(in.color_opacity.x),
+        unpack2x16float(in.color_opacity.y)
+    );
+
+    let alpha = min(0.99, color_opacity.a * exp(-power));
 
     // Discard if alpha is less than 1/255
     if (alpha < 0.00392156862) { discard; }
 
     // Premultiplied alpha
-    return vec4f(in.color * alpha, alpha);
+    return vec4f(color_opacity.rgb * alpha, alpha);
 }

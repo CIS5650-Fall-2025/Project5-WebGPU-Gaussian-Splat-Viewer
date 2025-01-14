@@ -23,6 +23,7 @@ import { assert } from './utils/util';
             maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
             maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize
         },
+        requiredFeatures: [ 'shader-f16' ]
     });
 
     const canvas = document.querySelector<HTMLCanvasElement>('#webgpu-canvas');

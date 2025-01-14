@@ -1,13 +1,15 @@
-const SH_C0: f32 = 0.28209479177387814;
-const SH_C1: f32 = 0.4886025119029199;
-const SH_C2 = array<f32, 5>(
+enable f16;
+
+const SH_C0: f16 = 0.28209479177387814;
+const SH_C1: f16 = 0.4886025119029199;
+const SH_C2 = array<f16, 5>(
     1.0925484305920792,
     -1.0925484305920792,
     0.31539156525252005,
     -1.0925484305920792,
     0.5462742152960396
 );
-const SH_C3 = array<f32, 7>(
+const SH_C3 = array<f16, 7>(
     -0.5900435899266435,
     2.890611442640554,
     -0.4570457994644658,
@@ -85,29 +87,29 @@ var<storage, read_write> sortIndices : array<u32>;
 var<storage, read_write> sortDispatch: DispatchIndirect;
 
 // reads the ith sh coef from the storage buffer 
-fn readSHCoef(splatIdx: u32, coefIdx: u32) -> vec3f {
+fn readSHCoef(splatIdx: u32, coefIdx: u32) -> vec3h {
     const maxNumCoefs = 16u;
     let offset = (splatIdx * maxNumCoefs + coefIdx) * 3;
     if (offset % 2 == 0) {
-        return vec3f(
-            unpack2x16float(shCoefs[offset / 2]),
-            unpack2x16float(shCoefs[offset / 2 + 1]).x
+        return vec3h(
+            bitcast<vec2h>(shCoefs[offset / 2]),
+            bitcast<vec2h>(shCoefs[offset / 2 + 1]).x
         );
     }
     else {
-        return vec3f(
-            unpack2x16float(shCoefs[offset / 2]).y,
-            unpack2x16float(shCoefs[offset / 2 + 1])
+        return vec3h(
+            bitcast<vec2h>(shCoefs[offset / 2]).y,
+            bitcast<vec2h>(shCoefs[offset / 2 + 1])
         );
     }
 }
 
-fn sigmoid(x: f32) -> f32 {
+fn sigmoid(x: f16) -> f16 {
     return 1.0 / (1.0 + exp(-x));
 }
 
 // spherical harmonics evaluation with Condon–Shortley phase
-fn computeColorFromSH(dir: vec3f, v_idx: u32, sh_deg: u32) -> vec3f {
+fn computeColorFromSH(dir: vec3h, v_idx: u32, sh_deg: u32) -> vec3h {
     var result = SH_C0 * readSHCoef(v_idx, 0u);
 
     if sh_deg > 0u {
@@ -148,7 +150,7 @@ fn computeColorFromSH(dir: vec3f, v_idx: u32, sh_deg: u32) -> vec3f {
     }
     result += 0.5;
 
-    return  max(vec3f(0.0), result);
+    return  max(vec3h(0.0), result);
 }
 
 @compute @workgroup_size(workgroupSize, 1, 1)
@@ -161,55 +163,59 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3<u32>) {
     // Get position in screen space
     let pos_opac = vec4f(unpack2x16float(gaussian.pos_opacity[0]), unpack2x16float(gaussian.pos_opacity[1]));
     let posView = camera.view * vec4f(pos_opac.xyz, 1.0);
-    let posClip = camera.proj * posView;
+    let posClip = mat4x4h(camera.proj) * vec4h(posView);
     let posNDC = posClip.xyz / posClip.w;
     let depth = posView.z;
 
     // Simple view frustum culling
-    if (any(abs(posNDC.xy) > vec2f(1.2)) || posNDC.z > 1.0 || posNDC.z < 0.0) { return; }
+    if (any(abs(posNDC.xy) > vec2h(1.2)) || posNDC.z > 1.0 || posNDC.z < 0.0) { return; }
 
     // Compute color from spherical harmonics
     // Camera world position is last column of inversed view matrix
     let direction = normalize(pos_opac.xyz - camera.viewInv[3].xyz);
     let color = computeColorFromSH(
-        direction, index, u32(renderSettings.shDegree)
+        vec3h(direction), index, u32(renderSettings.shDegree)
     );
-    let opacity = sigmoid(pos_opac.w);
+    let opacity = sigmoid(f16(pos_opac.w));
 
     // Calculate 3D covariance matrix from scale and rotation
     // rotation matrix
-    let rot = vec4f(unpack2x16float(gaussian.rot[0]), unpack2x16float(gaussian.rot[1]));
-    let rotMat = mat3x3f(
+    // let rot = vec4f(unpack2x16float(gaussian.rot[0]), unpack2x16float(gaussian.rot[1]));
+    let rot = vec4h(bitcast<vec2h>(gaussian.rot[0]), bitcast<vec2h>(gaussian.rot[1]));
+    let rotMat = mat3x3h(
         1.0 - 2.0 * (rot.z * rot.z + rot.w * rot.w), 2.0 * (rot.y * rot.z + rot.x * rot.w), 2.0 * (rot.y * rot.w - rot.x * rot.z),
         2.0 * (rot.y * rot.z - rot.x * rot.w), 1.0 - 2.0 * (rot.y * rot.y + rot.w * rot.w), 2.0 * (rot.z * rot.w + rot.x * rot.y),
         2.0 * (rot.y * rot.w + rot.x * rot.z), 2.0 * (rot.z * rot.w - rot.x * rot.y), 1.0 - 2.0 * (rot.y * rot.y + rot.z * rot.z)
     );
     // diagonal scale matrix, saved in log space
-    let scale = renderSettings.gaussianScaling * exp(vec3f(unpack2x16float(gaussian.scale[0]), unpack2x16float(gaussian.scale[1]).x));
-    let scaleRot = mat3x3f(
+    // let scale = renderSettings.gaussianScaling * exp(vec3f(unpack2x16float(gaussian.scale[0]), unpack2x16float(gaussian.scale[1]).x));
+    let scale = f16(renderSettings.gaussianScaling) * exp(vec3h(bitcast<vec2h>(gaussian.scale[0]), bitcast<vec2h>(gaussian.scale[1]).x));
+    var tmpMat = mat3x3h(
         scale.x * rotMat[0],
         scale.y * rotMat[1],
         scale.z * rotMat[2],
     );
-    let cov3d = scaleRot * transpose(scaleRot);
+    let cov3d = tmpMat * transpose(tmpMat);
 
     // Calculate 2D covariance matrix from 3D covariance matrix
-    let WT = mat3x3f(camera.view[0].xyz, camera.view[1].xyz, camera.view[2].xyz);
+    let W = mat3x3h(mat3x3f(camera.view[0].xyz, camera.view[1].xyz, camera.view[2].xyz));
     
-    let lim = 0.65 * camera.viewport * camera.focal;
-    let t = vec3f(
-        clamp(posView.xy / posView.z, -lim, lim) * posView.z,
-        posView.z
+    let lim = 0.65 * vec2h(camera.viewport * camera.focal);
+    let t = vec3h(
+        clamp(vec2h(posView.xy / posView.z), -lim, lim) * f16(posView.z),
+        f16(posView.z)
     );
     let invTz = 1.0 / t.z;
-    let JT = mat3x2f(
-                       camera.focal.x * invTz,                                   0.0,
-                                          0.0,                camera.focal.y * invTz, 
-        -camera.focal.x * t.x * invTz * invTz, -camera.focal.y * t.y * invTz * invTz
+    let focal = vec2h(camera.focal);
+    let J = mat3x2h(
+		               focal.x * invTz,                            0.0,
+                                   0.0,                focal.y * invTz, 
+        -focal.x * t.x * invTz * invTz, -focal.y * t.y * invTz * invTz
     );
 
-    let tmpMat = JT * WT;
-    var cov2d = tmpMat * cov3d * transpose(tmpMat);
+    // Use f32 for eigenvalue and conic computation
+    let tmpMat2 = J * W;
+    var cov2d = mat2x2f(tmpMat2 * cov3d * transpose(tmpMat2));
     cov2d[0][0] += 0.3;
     cov2d[1][1] += 0.3;
 
@@ -220,8 +226,8 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3<u32>) {
     // Calculate max radius via eigenvalues of 2D covariance matrix
 	let mid = 0.5 * (cov2d[0][0] + cov2d[1][1]);
     let dist = sqrt(max(0.1, mid * mid - det));
-	let lambda1 = mid + dist;
-	let lambda2 = mid - dist;
+	let lambda1 = (mid + dist);
+	let lambda2 = (mid - dist);
     // Get size from max radius in NDC space
 	let size = ceil(3.0 * sqrt(max(lambda1, lambda2))) * 2.0 / camera.viewport;
 
@@ -237,15 +243,19 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3<u32>) {
     
     // Handle output to render pipeline
     var output: Splat;
-    output.pos = pack2x16float(posNDC.xy);
+    output.pos = bitcast<u32>(posNDC.xy);
     output.size = pack2x16float(size);
     output.color_opacity = vec2u(
-        pack2x16float(color.rg),
-        pack2x16float(vec2f(color.b, opacity))
+        bitcast<u32>(color.rg),
+        bitcast<u32>(vec2h(color.b, opacity))
     );
     output.conic = vec2u(
         pack2x16float(conic.xy),
         pack2x16float(vec2f(conic.z, 0))
     );
+    // output.conic = vec2u(
+    //     bitcast<u32>(conic.xy),
+    //     bitcast<u32>(vec2h(conic.z, 0))
+    // );
     splats[keyIndex] = output;
 }

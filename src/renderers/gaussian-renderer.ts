@@ -1,11 +1,13 @@
 import { PointCloud } from '../utils/load';
 import preprocessWGSL from '../shaders/preprocess.wgsl';
+import preprocessWGSL16 from '../shaders/preprocess-16.wgsl';
 import renderWGSL from '../shaders/gaussian.wgsl';
 import { get_sorter, c_histogram_block_rows, C } from '../sort/sort';
 import { Renderer } from './renderer';
 
 export interface GaussianRenderer extends Renderer {
     renderSettingsBuffer: GPUBuffer;
+    preprocessPipeline: GPUComputePipeline;
 };
 
 // Utility to create GPU buffers
@@ -26,11 +28,12 @@ export default function get_renderer(
     device: GPUDevice,
     presentation_format: GPUTextureFormat,
     camera_buffer: GPUBuffer,
+    use_f16: boolean = false
 ): GaussianRenderer {
 
-    const sorter = get_sorter(pc.num_points, device);
-
     const workgroupSize = 64;
+
+    const sorter = get_sorter(pc.num_points, device);
 
     // ===============================================
     //            Initialize GPU Buffers
@@ -51,7 +54,7 @@ export default function get_renderer(
         new Float32Array([1.0, pc.sh_deg])
     );
 
-    const splatSize = 4 * 12;
+    const splatSize = 4 * 6;
     const splatBuffer = createBuffer(
         device,
         "splat buffer",
@@ -71,11 +74,21 @@ export default function get_renderer(
     // ===============================================
     //    Create Compute Pipeline and Bind Groups
     // ===============================================
+    let preprocessCode: string;
+    let prerocessLabel: string;
+    if (use_f16) {
+        preprocessCode = preprocessWGSL16;
+        prerocessLabel = 'preprocess f16';
+    }
+    else {
+        preprocessCode = preprocessWGSL;
+        prerocessLabel = 'preprocess f32';
+    }
     const preprocessPipeline = device.createComputePipeline({
-        label: 'preprocess',
+        label: prerocessLabel,
         layout: 'auto',
         compute: {
-            module: device.createShaderModule({ code: preprocessWGSL }),
+            module: device.createShaderModule({ code: preprocessCode }),
             entryPoint: 'preprocess',
             constants: {
                 workgroupSize: C.histogram_wg_size,
@@ -222,6 +235,7 @@ export default function get_renderer(
             render(encoder, texture_view);
         },
         camera_buffer,
-        renderSettingsBuffer
+        renderSettingsBuffer,
+        preprocessPipeline
     };
 }

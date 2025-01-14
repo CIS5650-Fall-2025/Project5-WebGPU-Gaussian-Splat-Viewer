@@ -95,7 +95,7 @@ export async function load_camera_presets(file: string): Promise<CameraPreset[]>
 
 const c_size_vec2 = 4 * 2;
 const c_size_mat4 = 4 * 16; // byte size of mat4 (i.e. Float32Array(16))
-const c_size_camera_uniform = 4 * c_size_mat4 + 2 * c_size_vec2;
+const c_size_camera_uniform = 4 * c_size_mat4 + 4 * c_size_vec2;
 interface CameraUniform {
     view_matrix: Mat4,
     view_inv_matrix: Mat4,
@@ -104,6 +104,7 @@ interface CameraUniform {
 
     viewport: Vec2,
     focal: Vec2,
+    clipping_planes: Vec2,
 }
 
 export function create_camera_uniform_buffer(device: GPUDevice) {
@@ -156,8 +157,11 @@ export class Camera {
     update_buffer(): void {
         let offset = 0;
 
+        const clippingPlanes = vec2.create(0.01, 100);
+
         this.view_matrix = get_view_matrix(this.rotation, this.position);
-        this.proj_matrix = get_projection_matrix(0.01, 100, this.fovX, this.fovY);
+        this.proj_matrix = get_projection_matrix(clippingPlanes[0], clippingPlanes[1], this.fovX, this.fovY);
+        // this.proj_matrix = get_projection_matrix(0.01, 100, this.fovX, this.fovY);
 
         const inv_view_matrix = mat4.inverse(this.view_matrix);
         vec3.transformMat4Upper3x3(vec3.create(0, 0, 1), inv_view_matrix, this.look);
@@ -177,6 +181,8 @@ export class Camera {
         intermediate_float_32_array.set(this.viewport, offset);
         offset += 2;
         intermediate_float_32_array.set(this.focal, offset);
+        offset += 2;
+        intermediate_float_32_array.set(clippingPlanes, offset);
         offset += 2;
 
         this.device.queue.writeBuffer(this.uniform_buffer, 0, intermediate_float_32_array);

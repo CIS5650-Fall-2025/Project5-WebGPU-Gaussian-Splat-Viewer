@@ -1,10 +1,11 @@
 struct CameraUniforms {
     view: mat4x4f,
-    view_inv: mat4x4f,
+    viewInv: mat4x4f,
     proj: mat4x4f,
-    proj_inv: mat4x4f,
+    projInv: mat4x4f,
     viewport: vec2f,
-    focal: vec2f
+    focal: vec2f,
+    clippingPlanes: vec2f
 };
 
 struct Gaussian {
