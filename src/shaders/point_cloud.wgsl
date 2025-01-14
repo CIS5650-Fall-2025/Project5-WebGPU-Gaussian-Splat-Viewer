@@ -9,9 +9,9 @@ struct CameraUniforms {
 };
 
 struct Gaussian {
-    pos_opacity: array<u32, 2>,
-    rot: array<u32, 2>,
-    scale: array<u32, 2>
+    pos_opacity: vec2u,
+    rot: vec2u,
+    scale: vec2u
 };
 
 @group(0) @binding(0)
@@ -31,8 +31,8 @@ fn vs_main(
     var out: VertexOutput;
 
     let gaussian = gaussians[vertex_index];
-    let a = unpack2x16float(gaussian.pos_opacity[0]);
-    let b = unpack2x16float(gaussian.pos_opacity[1]);
+    let a = unpack2x16float(gaussian.pos_opacity.x);
+    let b = unpack2x16float(gaussian.pos_opacity.y);
     let pos = vec4f(a.x, a.y, b.x, 1.);
 
     out.position = camera.proj * camera.view * pos;

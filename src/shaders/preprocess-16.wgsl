@@ -53,9 +53,9 @@ struct RenderSettings {
 }
 
 struct Gaussian {
-    pos_opacity: array<u32,2>,
-    rot: array<u32,2>,
-    scale: array<u32,2>
+    pos_opacity: vec2u,
+    rot: vec2u,
+    scale: vec2u
 };
 
 struct Splat {
@@ -154,7 +154,7 @@ fn computeColorFromSH(dir: vec3h, v_idx: u32, sh_deg: u32) -> vec3h {
 }
 
 @compute @workgroup_size(workgroupSize, 1, 1)
-fn preprocess(@builtin(global_invocation_id) globalIndex: vec3<u32>) {
+fn preprocess(@builtin(global_invocation_id) globalIndex: vec3u) {
     let index = globalIndex.x;
     if (index >= arrayLength(&gaussians)) { return; }
 
@@ -163,24 +163,30 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3<u32>) {
     // Get position in screen space
     let pos_opac = vec4f(unpack2x16float(gaussian.pos_opacity[0]), unpack2x16float(gaussian.pos_opacity[1]));
     let posView = camera.view * vec4f(pos_opac.xyz, 1.0);
+    // Z-clipping
+    if (posView.z < camera.clippingPlanes[0] || posView.z > camera.clippingPlanes[1]) { return; }
     let posClip = mat4x4h(camera.proj) * vec4h(posView);
     let posNDC = posClip.xyz / posClip.w;
     let depth = posView.z;
 
     // Simple view frustum culling
-    if (any(abs(posNDC.xy) > vec2h(1.2)) || posNDC.z > 1.0 || posNDC.z < 0.0) { return; }
+    if (any(abs(posNDC.xy) > vec2h(1.2))) { return; }
+
+    // Set some f16 variables to prevent repeated casting
+    let focal = vec2h(camera.focal);
+    let viewport = vec2h(camera.viewport);
+    let posView16 = vec3h(posView.xyz);
 
     // Compute color from spherical harmonics
     // Camera world position is last column of inversed view matrix
-    let direction = normalize(pos_opac.xyz - camera.viewInv[3].xyz);
+    let direction = normalize(vec3h(pos_opac.xyz - camera.viewInv[3].xyz));
     let color = computeColorFromSH(
-        vec3h(direction), index, u32(renderSettings.shDegree)
+        direction, index, u32(renderSettings.shDegree)
     );
     let opacity = sigmoid(f16(pos_opac.w));
 
     // Calculate 3D covariance matrix from scale and rotation
     // rotation matrix
-    // let rot = vec4f(unpack2x16float(gaussian.rot[0]), unpack2x16float(gaussian.rot[1]));
     let rot = vec4h(bitcast<vec2h>(gaussian.rot[0]), bitcast<vec2h>(gaussian.rot[1]));
     let rotMat = mat3x3h(
         1.0 - 2.0 * (rot.z * rot.z + rot.w * rot.w), 2.0 * (rot.y * rot.z + rot.x * rot.w), 2.0 * (rot.y * rot.w - rot.x * rot.z),
@@ -188,7 +194,6 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3<u32>) {
         2.0 * (rot.y * rot.w + rot.x * rot.z), 2.0 * (rot.z * rot.w - rot.x * rot.y), 1.0 - 2.0 * (rot.y * rot.y + rot.z * rot.z)
     );
     // diagonal scale matrix, saved in log space
-    // let scale = renderSettings.gaussianScaling * exp(vec3f(unpack2x16float(gaussian.scale[0]), unpack2x16float(gaussian.scale[1]).x));
     let scale = f16(renderSettings.gaussianScaling) * exp(vec3h(bitcast<vec2h>(gaussian.scale[0]), bitcast<vec2h>(gaussian.scale[1]).x));
     var tmpMat = mat3x3h(
         scale.x * rotMat[0],
@@ -200,36 +205,35 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3<u32>) {
     // Calculate 2D covariance matrix from 3D covariance matrix
     let W = mat3x3h(mat3x3f(camera.view[0].xyz, camera.view[1].xyz, camera.view[2].xyz));
     
-    let lim = 0.65 * vec2h(camera.viewport * camera.focal);
+    let lim = 0.65 * viewport * focal;
     let t = vec3h(
-        clamp(vec2h(posView.xy / posView.z), -lim, lim) * f16(posView.z),
-        f16(posView.z)
+        clamp(posView16.xy / posView16.z, -lim, lim) * posView16.z,
+        posView16.z
     );
     let invTz = 1.0 / t.z;
-    let focal = vec2h(camera.focal);
     let J = mat3x2h(
 		               focal.x * invTz,                            0.0,
                                    0.0,                focal.y * invTz, 
         -focal.x * t.x * invTz * invTz, -focal.y * t.y * invTz * invTz
     );
 
-    // Use f32 for eigenvalue and conic computation
     let tmpMat2 = J * W;
-    var cov2d = mat2x2f(tmpMat2 * cov3d * transpose(tmpMat2));
+    var cov2d = tmpMat2 * cov3d * transpose(tmpMat2);
     cov2d[0][0] += 0.3;
     cov2d[1][1] += 0.3;
 
-    let det = determinant(cov2d);
-    let detInv = 1.0 / det;
-    let conic = detInv * vec3f(cov2d[1][1], -cov2d[0][1], cov2d[0][0]); 
-
     // Calculate max radius via eigenvalues of 2D covariance matrix
-	let mid = 0.5 * (cov2d[0][0] + cov2d[1][1]);
+    // Use f32 for some intermediate calculations
+    let cov2d32 = mat2x2f(cov2d);
+    let det = determinant(cov2d32);
+
+	let mid = 0.5 * (cov2d32[0][0] + cov2d32[1][1]);
     let dist = sqrt(max(0.1, mid * mid - det));
-	let lambda1 = (mid + dist);
-	let lambda2 = (mid - dist);
+	let lambda1 = f16(mid + dist);
+	let lambda2 = f16(mid - dist);
+
     // Get size from max radius in NDC space
-	let size = ceil(3.0 * sqrt(max(lambda1, lambda2))) * 2.0 / camera.viewport;
+	let size = ceil(3.0 * sqrt(max(lambda1, lambda2))) * 2.0 / viewport;
 
     // Store sorting information
     let keyIndex = atomicAdd(&sortInfos.keysSize, 1);
@@ -244,18 +248,15 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3<u32>) {
     // Handle output to render pipeline
     var output: Splat;
     output.pos = bitcast<u32>(posNDC.xy);
-    output.size = pack2x16float(size);
+    output.size = bitcast<u32>(size);
     output.color_opacity = vec2u(
         bitcast<u32>(color.rg),
         bitcast<u32>(vec2h(color.b, opacity))
     );
+    let detInv = 1.0 / det;
     output.conic = vec2u(
-        pack2x16float(conic.xy),
-        pack2x16float(vec2f(conic.z, 0))
+        pack2x16float(vec2f(detInv * cov2d32[1][1], detInv * -cov2d32[0][1])),
+        pack2x16float(vec2f(detInv * cov2d32[0][0], 0))
     );
-    // output.conic = vec2u(
-    //     bitcast<u32>(conic.xy),
-    //     bitcast<u32>(vec2h(conic.z, 0))
-    // );
     splats[keyIndex] = output;
 }

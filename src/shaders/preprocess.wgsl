@@ -51,9 +51,9 @@ struct RenderSettings {
 }
 
 struct Gaussian {
-    pos_opacity: array<u32,2>,
-    rot: array<u32,2>,
-    scale: array<u32,2>
+    pos_opacity: vec2u,
+    rot: vec2u,
+    scale: vec2u
 };
 
 struct Splat {
@@ -152,7 +152,7 @@ fn computeColorFromSH(dir: vec3f, v_idx: u32, sh_deg: u32) -> vec3f {
 }
 
 @compute @workgroup_size(workgroupSize, 1, 1)
-fn preprocess(@builtin(global_invocation_id) globalIndex: vec3<u32>) {
+fn preprocess(@builtin(global_invocation_id) globalIndex: vec3u) {
     let index = globalIndex.x;
     if (index >= arrayLength(&gaussians)) { return; }
 
@@ -161,12 +161,14 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3<u32>) {
     // Get position in screen space
     let pos_opac = vec4f(unpack2x16float(gaussian.pos_opacity[0]), unpack2x16float(gaussian.pos_opacity[1]));
     let posView = camera.view * vec4f(pos_opac.xyz, 1.0);
+    // Z-clipping
+    if (posView.z < camera.clippingPlanes[0] || posView.z > camera.clippingPlanes[1]) { return; }
     let posClip = camera.proj * posView;
     let posNDC = posClip.xyz / posClip.w;
     let depth = posView.z;
 
     // Simple view frustum culling
-    if (any(abs(posNDC.xy) > vec2f(1.2)) || posNDC.z > 1.0 || posNDC.z < 0.0) { return; }
+    if (any(abs(posNDC.xy) > vec2f(1.2))) { return; }
 
     // Compute color from spherical harmonics
     // Camera world position is last column of inversed view matrix
@@ -213,11 +215,8 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3<u32>) {
     cov2d[0][0] += 0.3;
     cov2d[1][1] += 0.3;
 
-    let det = determinant(cov2d);
-    let detInv = 1.0 / det;
-    let conic = detInv * vec3f(cov2d[1][1], -cov2d[0][1], cov2d[0][0]); 
-
     // Calculate max radius via eigenvalues of 2D covariance matrix
+    let det = determinant(cov2d);
 	let mid = 0.5 * (cov2d[0][0] + cov2d[1][1]);
     let dist = sqrt(max(0.1, mid * mid - det));
 	let lambda1 = mid + dist;
@@ -243,9 +242,10 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3<u32>) {
         pack2x16float(color.rg),
         pack2x16float(vec2f(color.b, opacity))
     );
+    let detInv = 1.0 / det;
     output.conic = vec2u(
-        pack2x16float(conic.xy),
-        pack2x16float(vec2f(conic.z, 0))
+        pack2x16float(vec2f(detInv * cov2d[1][1], detInv * -cov2d[0][1])),
+        pack2x16float(vec2f(detInv * cov2d[0][0], 0))
     );
     splats[keyIndex] = output;
 }
