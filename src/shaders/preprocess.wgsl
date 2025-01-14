@@ -217,10 +217,13 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3u) {
 
     // Calculate max radius via eigenvalues of 2D covariance matrix
     let det = determinant(cov2d);
+    if (det == 0) { return; }
+
 	let mid = 0.5 * (cov2d[0][0] + cov2d[1][1]);
     let dist = sqrt(max(0.1, mid * mid - det));
 	let lambda1 = mid + dist;
 	let lambda2 = mid - dist;
+    
     // Get size from max radius in NDC space
 	let size = ceil(3.0 * sqrt(max(lambda1, lambda2))) * 2.0 / camera.viewport;
 

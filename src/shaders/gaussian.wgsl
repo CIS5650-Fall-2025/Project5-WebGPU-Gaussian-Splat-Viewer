@@ -10,7 +10,7 @@ struct CameraUniforms {
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
-    // No inerpolation
+    // No interpolation
     @location(0) @interpolate(flat) center: u32,
     @location(1) @interpolate(flat) color_opacity: vec2u,
     @location(2) @interpolate(flat) conic: vec2u,

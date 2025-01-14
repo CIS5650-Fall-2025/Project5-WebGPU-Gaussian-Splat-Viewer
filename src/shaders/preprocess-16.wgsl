@@ -30,7 +30,7 @@ struct DispatchIndirect {
 
 struct SortInfos {
     keysSize: atomic<u32>,  // instance_count in DrawIndirect
-    //data below is for info inside radix sort 
+    // data below is for info inside radix sort 
     paddedSize: u32, 
     passes: u32,
     evenPass: u32,
@@ -203,7 +203,7 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3u) {
     let cov3d = tmpMat * transpose(tmpMat);
 
     // Calculate 2D covariance matrix from 3D covariance matrix
-    let W = mat3x3h(mat3x3f(camera.view[0].xyz, camera.view[1].xyz, camera.view[2].xyz));
+    let W = mat3x3f(mat3x3f(camera.view[0].xyz, camera.view[1].xyz, camera.view[2].xyz));
     
     let lim = 0.65 * viewport * focal;
     let t = vec3h(
@@ -211,29 +211,29 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3u) {
         posView16.z
     );
     let invTz = 1.0 / t.z;
-    let J = mat3x2h(
+    let J = mat3x2f(mat3x2h(
 		               focal.x * invTz,                            0.0,
                                    0.0,                focal.y * invTz, 
         -focal.x * t.x * invTz * invTz, -focal.y * t.y * invTz * invTz
-    );
+    ));
 
     let tmpMat2 = J * W;
-    var cov2d = tmpMat2 * cov3d * transpose(tmpMat2);
+    var cov2d = tmpMat2 * mat3x3f(cov3d) * transpose(tmpMat2);
     cov2d[0][0] += 0.3;
     cov2d[1][1] += 0.3;
 
     // Calculate max radius via eigenvalues of 2D covariance matrix
     // Use f32 for some intermediate calculations
-    let cov2d32 = mat2x2f(cov2d);
-    let det = determinant(cov2d32);
+    let det = determinant(cov2d);
+    if (det == 0) { return; }
 
-	let mid = 0.5 * (cov2d32[0][0] + cov2d32[1][1]);
+	let mid = 0.5 * (cov2d[0][0] + cov2d[1][1]);
     let dist = sqrt(max(0.1, mid * mid - det));
-	let lambda1 = f16(mid + dist);
-	let lambda2 = f16(mid - dist);
+	let lambda1 = mid + dist;
+	let lambda2 = mid - dist;
 
     // Get size from max radius in NDC space
-	let size = ceil(3.0 * sqrt(max(lambda1, lambda2))) * 2.0 / viewport;
+	let size = vec2h(ceil(3.0 * sqrt(max(lambda1, lambda2))) * 2.0 / camera.viewport);
 
     // Store sorting information
     let keyIndex = atomicAdd(&sortInfos.keysSize, 1);
@@ -255,8 +255,8 @@ fn preprocess(@builtin(global_invocation_id) globalIndex: vec3u) {
     );
     let detInv = 1.0 / det;
     output.conic = vec2u(
-        pack2x16float(vec2f(detInv * cov2d32[1][1], detInv * -cov2d32[0][1])),
-        pack2x16float(vec2f(detInv * cov2d32[0][0], 0))
+        pack2x16float(vec2f(detInv * cov2d[1][1], detInv * -cov2d[0][1])),
+        pack2x16float(vec2f(detInv * cov2d[0][0], 0))
     );
     splats[keyIndex] = output;
 }
