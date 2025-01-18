@@ -1,46 +1,45 @@
 struct CameraUniforms {
-    view: mat4x4<f32>,
-    view_inv: mat4x4<f32>,
-    proj: mat4x4<f32>,
-    proj_inv: mat4x4<f32>,
-    viewport: vec2<f32>,
-    focal: vec2<f32>
+    view: mat4x4f,
+    viewInv: mat4x4f,
+    proj: mat4x4f,
+    projInv: mat4x4f,
+    viewport: vec2f,
+    focal: vec2f,
+    clippingPlanes: vec2f
 };
 
 struct Gaussian {
-    pos_opacity: array<u32,2>,
-    rot: array<u32,2>,
-    scale: array<u32,2>
-}
+    pos_opacity: vec2u,
+    rot: vec2u,
+    scale: vec2u
+};
 
 @group(0) @binding(0)
 var<uniform> camera: CameraUniforms;
 
 @group(1) @binding(0)
-var<storage,read> gaussians : array<Gaussian>;
+var<storage, read> gaussians: array<Gaussian>;
 
 struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
+    @builtin(position) position: vec4f,
 };
 
 @vertex
 fn vs_main(
-    @builtin(vertex_index) in_vertex_index: u32,
+    @builtin(vertex_index) vertex_index: u32
 ) -> VertexOutput {
     var out: VertexOutput;
 
-    let vertex = gaussians[in_vertex_index];
-    let a = unpack2x16float(vertex.pos_opacity[0]);
-    let b = unpack2x16float(vertex.pos_opacity[1]);
-    let pos = vec4<f32>(a.x, a.y, b.x, 1.);
+    let gaussian = gaussians[vertex_index];
+    let a = unpack2x16float(gaussian.pos_opacity.x);
+    let b = unpack2x16float(gaussian.pos_opacity.y);
+    let pos = vec4f(a.x, a.y, b.x, 1.);
 
-    // TODO: MVP calculations
-    out.position = pos;
-
+    out.position = camera.proj * camera.view * pos;
     return out;
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(1., 1., 0., 1.);
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    return vec4f(1., 1., 0., 1.);
 }
