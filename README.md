@@ -8,7 +8,7 @@ WebGPU Gaussian Splat Viewer
 
 ## Live Demo
 
-[Click here to check out my implementation!](https://domino0o.github.io/Project5-WebGPU-Gaussian-Splat-Viewer/)
+[Click here to check out my implementation!](https://dominikkau.github.io/Project5-WebGPU-Gaussian-Splat-Viewer/)
 You'll need some trained gaussian splat input data.
 
 ## Overview
