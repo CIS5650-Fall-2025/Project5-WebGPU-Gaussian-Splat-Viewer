@@ -19,12 +19,13 @@ const SH_C3 = array<f32,7>(
 
 override workgroupSize: u32;
 override sortKeyPerThread: u32;
+override shDegree: u32;
 
 struct DispatchIndirect {
     dispatch_x: atomic<u32>,
     dispatch_y: u32,
     dispatch_z: u32,
-}
+};
 
 struct SortInfos {
     keys_size: atomic<u32>,  // instance_count in DrawIndirect
@@ -33,7 +34,7 @@ struct SortInfos {
     passes: u32,
     even_pass: u32,
     odd_pass: u32,
-}
+};
 
 struct CameraUniforms {
     view: mat4x4<f32>,
@@ -44,11 +45,6 @@ struct CameraUniforms {
     focal: vec2<f32>
 };
 
-struct RenderSettings {
-    gaussian_scaling: f32,
-    sh_deg: f32,
-}
-
 struct Gaussian {
     pos_opacity: array<u32,2>,
     rot: array<u32,2>,
@@ -56,8 +52,18 @@ struct Gaussian {
 };
 
 struct Splat {
-    //TODO: store information for 2D splat rendering
+    xy: u32,
+    widthHeight: u32,
+    packed_color: array<u32, 2>,
+    co: u32,
+    cp: u32
 };
+
+@group(0) @binding(0)
+var<uniform> camera: CameraUniforms;
+
+@group(1) @binding(0)
+var<storage, read> gaussians: array<Gaussian>;
 
 //TODO: bind your data here
 @group(2) @binding(0)
@@ -68,11 +74,26 @@ var<storage, read_write> sort_depths : array<u32>;
 var<storage, read_write> sort_indices : array<u32>;
 @group(2) @binding(3)
 var<storage, read_write> sort_dispatch: DispatchIndirect;
+@group(3) @binding(0)
+var<storage, read_write> splats: array<Splat>;
+@group(3) @binding(1)
+var<uniform> scaling: f32;
+@group(3) @binding(2)
+var<storage, read> colors: array<u32>; 
+//TODO: bind your data here
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
-    //TODO: access your binded sh_coeff, see load.ts for how it is stored
-    return vec3<f32>(0.0);
+    
+    let idx = splat_idx * 24 + c_idx % 2 + c_idx / 2 * 3;
+    let color_ab = unpack2x16float(colors[idx]);
+    let color_cd = unpack2x16float(colors[idx + 1]);
+
+    if (c_idx % 2 == 0) {
+        return vec3f(color_ab.x, color_ab.y, color_cd.x);
+    } else {
+        return vec3f(color_ab.y, color_cd.x, color_cd.y);
+    }
 }
 
 // spherical harmonics evaluation with Condon–Shortley phase
@@ -111,8 +132,137 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
 @compute @workgroup_size(workgroupSize,1,1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
-    //TODO: set up pipeline as described in instruction
 
-    let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
+    // early exit
+    if (idx >= arrayLength(&gaussians)) {
+        return;
+    }
+
+    // fetch Gaussian data
+    let vert = gaussians[idx];
+    let xi = unpack2x16float(vert.pos_opacity[0]);
+    let za = unpack2x16float(vert.pos_opacity[1]);
+
+    let posWorld = vec4f(xi.x, xi.y, xi.x, 1.0);
+    let opacity = 1.0f / (1.0f + exp(-za.y));
+
+    // transform world position to view to clip to NDC
+    let viewPos: vec4f = camera.view * posWorld;
+    let clipPos: vec4f = camera.proj * viewPos;
+    let ndcPos: vec3f  = clipPos.xyz / clipPos.w;
+
+    // frustum‐cull with a 1.2× margin in XY, full [0,1] in Z
+    if (ndcPos.x < -1.2 || ndcPos.x > 1.2 ||
+        ndcPos.y < -1.2 || ndcPos.y > 1.2 ||
+        ndcPos.z <  0.0 || ndcPos.z >  1.0) {
+        return;
+    }
+
+    // unpack rotation quaternion and scale vector
+    let rot0  = unpack2x16float(vert.rot[0]);
+    let rot1  = unpack2x16float(vert.rot[1]);
+    let rot   = vec4f(rot0.x, rot0.y, rot1.x, rot1.y);
+    let r     = rot.x;
+    let x     = rot.y;
+    let y     = rot.z;
+    let z     = rot.w;
+
+    let sc0   = unpack2x16float(vert.scale[0]);
+    let sc1   = unpack2x16float(vert.scale[1]);
+    let scale = exp(vec3f(sc0.x, sc0.y, sc1.x));
+
+    let R = mat3x3f(
+        vec3f(1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y - r * z), 2.0 * (x * z + r * y)),
+        vec3f(2.0 * (x * y + r * z), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z - r * x)),
+        vec3f(2.0 * (x * z - r * y), 2.0 * (y * z + r * x), 1.0 - 2.0 * (x * x + y * y))
+    );
+    
+    let sx = scale.x * scaling;
+    let sy = scale.y * scaling;
+    let sz = scale.z * scaling;
+    let S = mat3x3f(
+        vec3f(sx, 0.0, 0.0),
+        vec3f(0.0, sy, 0.0),
+        vec3f(0.0, 0.0, sz)
+    );
+    let M = S * R;
+    let Sigma = transpose(M) * M;
+
+    var cov3D: array<f32,6>;
+    cov3D[0] = Sigma[0][0];
+    cov3D[1] = Sigma[0][1];
+    cov3D[2] = Sigma[0][2];
+    cov3D[3] = Sigma[1][1];
+    cov3D[4] = Sigma[1][2];
+    cov3D[5] = Sigma[2][2];
+
+    var t = (camera.view * posWorld).xyz;
+    let invZ = 1.0 / t.z;
+    let limx = 1.3 * (camera.viewport.x / (2.0 * camera.focal.x));
+    let limy = 1.3 * (camera.viewport.y / (2.0 * camera.focal.y));
+    t.x = clamp(t.x * invZ, -limx, limx) * t.z;
+    t.y = clamp(t.y * invZ, -limy, limy) * t.z;
+
+    // Jacobian of the projection
+    let J = mat3x3f(
+        vec3f(camera.focal.x * invZ,       0.0, -camera.focal.x * t.x * invZ * invZ),
+        vec3f(0.0,                         camera.focal.y * invZ, -camera.focal.y * t.y * invZ * invZ),
+        vec3f(0.0,                         0.0, 0.0)
+    );
+
+    let W = transpose(mat3x3f(
+        camera.view[0].xyz,
+        camera.view[1].xyz,
+        camera.view[2].xyz
+    ));
+
+    let T = W * J;
+
+    let Vrk = mat3x3f(
+        vec3f(cov3D[0], cov3D[1], cov3D[2]),
+        vec3f(cov3D[1], cov3D[3], cov3D[4]),
+        vec3f(cov3D[2], cov3D[4], cov3D[5])
+    );
+
+    var Cov2D = transpose(T) * transpose(Vrk) * T;
+    Cov2D[0][0] += 0.3;
+    Cov2D[1][1] += 0.3;
+    let cxx = Cov2D[0][0];
+    let cyy = Cov2D[1][1];
+    let cxy = Cov2D[0][1];
+
+    let det = (cxx * cyy - cxy * cxy);
+
+    if (det < 0.000001f) { return; }
+    let conic = vec3f(cyy / det, -cxy / det, cxx / det);
+
+    let mid = 0.5f * (cxx + cyy);
+    let lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
+    let lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
+    let radius = ceil(3.0f * sqrt(max(lambda1, lambda2)));
+
+    let keys_per_dispatch = workgroupSize * sortKeyPerThread;  
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
+
+    // reserve a slot in the sorted‐list buffer
+    let splatIndex: u32 = atomicAdd(&sort_infos.keys_size, 1u);
+
+    if (splatIndex % keys_per_dispatch == 0u) {
+        atomicAdd(&sort_dispatch.dispatch_x, 1u);
+    }
+
+    // pack and store NDC.xy into 2×16-bit floats
+    let xy: u32 = pack2x16float(ndcPos.xy);
+    splats[splatIndex].xy = xy;
+    splats[splatIndex].widthHeight = pack2x16float(vec2f(0.005f, 0.005f) * scaling);
+    let direction = normalize(posWorld.xyz - camera.view_inv[3].xyz);
+    let color = computeColorFromSH(direction, idx, shDegree);
+
+    splats[splatIndex].packed_color[0] = pack2x16float(color.rg);
+    splats[splatIndex].packed_color[1] = pack2x16float(vec2f(color.b, 1.0f));
+
+    splats[splatIndex].co = pack2x16float(conic.xy);
+    splats[splatIndex].cp = pack2x16float(vec2f(conic.z, opacity));
+    sort_depths[splatIndex] = bitcast<u32>(100.0 - viewPos.z);
+    sort_indices[splatIndex] = splatIndex;
 }
