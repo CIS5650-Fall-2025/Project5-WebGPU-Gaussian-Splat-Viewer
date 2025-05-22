@@ -60,7 +60,7 @@ export default function get_renderer(
     new Float32Array([1.0])
   );
 
-  const floatsPerSplat = 4;
+  const floatsPerSplat = 24;
   const splatStride = floatsPerSplat * Float32Array.BYTES_PER_ELEMENT;
   const splat_buffer = createBuffer(
     device,
@@ -123,13 +123,9 @@ export default function get_renderer(
     label: 'preprocess splat bind group',
     layout: splatLayout,
     entries: [
-      { 
-        binding: 0,
-        resource: { 
-          buffer: 
-          splat_buffer 
-        } 
-      }
+      {  binding: 0, resource: { buffer: splat_buffer } }, 
+      { binding: 1, resource: { buffer: rendering_buffer } },
+      { binding: 2, resource: { buffer: pc.sh_buffer } }
     ]
   });
 
@@ -161,10 +157,6 @@ export default function get_renderer(
     {
       binding: 0,
       resource: { buffer: splat_buffer },
-    },
-    {
-      binding: 1,
-      resource: { buffer: rendering_buffer },
     }
   ],
 });
