@@ -16,7 +16,7 @@ Open it with any Gaussian splat input dataset.
 
 ### Demo Video/GIF
 
-[![](img/video.mp4)](TODO)
+[![](img/gaussian.gif)]()
 
 ### Project Overview
 
