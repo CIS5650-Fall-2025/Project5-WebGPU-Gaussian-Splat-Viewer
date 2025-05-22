@@ -57,17 +57,26 @@ struct Gaussian {
 
 struct Splat {
     //TODO: store information for 2D splat rendering
+    xyPacked: u32
 };
+
+@group(0) @binding(0)
+var<uniform> camera: CameraUniforms;
+
+@group(1) @binding(0)
+var<storage, read> gaussians: array<Gaussian>;
 
 //TODO: bind your data here
 @group(2) @binding(0)
-var<storage, read_write> sort_infos: SortInfos;
-@group(2) @binding(1)
-var<storage, read_write> sort_depths : array<u32>;
-@group(2) @binding(2)
-var<storage, read_write> sort_indices : array<u32>;
-@group(2) @binding(3)
-var<storage, read_write> sort_dispatch: DispatchIndirect;
+var<storage, read_write> splats: array<Splat>;
+
+// var<storage, read_write> sort_infos: SortInfos;
+// @group(2) @binding(1)
+// var<storage, read_write> sort_depths : array<u32>;
+// @group(2) @binding(2)
+// var<storage, read_write> sort_indices : array<u32>;
+// @group(2) @binding(3)
+// var<storage, read_write> sort_dispatch: DispatchIndirect;
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
@@ -113,6 +122,25 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let idx = gid.x;
     //TODO: set up pipeline as described in instruction
 
+    // early exit
+    if (idx >= arrayLength(&gaussians)) {
+        return;
+    }
+
+    // fetch Gaussian data
+    let g = gaussians[idx];
+    let xypack = unpack2x16float(g.pos_opacity[0]);
+    let zwpack = unpack2x16float(g.pos_opacity[1]);
+
+    let positionWorld = vec4f(xypack.x, xypack.y, zwpack.x, 1.0);
+    let opacity = zwpack.y;
+
+    // Project world space to screen coordinates
+    let pos_clip = camera.proj * camera.view * positionWorld;
+    let screen_pos = pos_clip.xy / pos_clip.w;
+
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
+
+    splats[idx].xy = pack2x16float(screen_pos);
 }
