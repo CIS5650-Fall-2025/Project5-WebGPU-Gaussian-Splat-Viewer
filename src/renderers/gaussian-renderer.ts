@@ -49,7 +49,7 @@ export default function get_renderer(
     'indirect buffer',
     20,
     GPUBufferUsage.COPY_DST | GPUBufferUsage.INDIRECT,
-    new Uint32Array([6, pc.num_points, 0, 0, 0])
+    new Uint32Array([6, 0, 0, 0, 0])
   )
 
     const rendering_buffer = createBuffer(
@@ -81,6 +81,7 @@ export default function get_renderer(
       constants: {
         workgroupSize: C.histogram_wg_size,
         sortKeyPerThread: c_histogram_block_rows,
+        shDegree: pc.sh_deg,
       },
     },
   });
@@ -157,6 +158,10 @@ export default function get_renderer(
     {
       binding: 0,
       resource: { buffer: splat_buffer },
+    },
+    { 
+      binding: 1,
+      resource: { buffer: sorter.ping_pong[0].sort_indices_buffer },
     }
   ],
 });
@@ -203,7 +208,7 @@ export default function get_renderer(
 
       encoder.copyBufferToBuffer(nulling_buffer, 0, sorter.sort_dispatch_indirect_buffer, 0, 4);
       preprocess_compute_pass(encoder)
-      // sorter.sort(encoder);
+      sorter.sort(encoder);
       encoder.copyBufferToBuffer(
         sorter.sort_info_buffer, 0, indirect_buffer, 4, 4);
       render_pass(encoder, texture_view);

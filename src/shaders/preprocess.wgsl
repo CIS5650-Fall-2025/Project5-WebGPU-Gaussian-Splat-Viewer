@@ -19,6 +19,7 @@ const SH_C3 = array<f32,7>(
 
 override workgroupSize: u32;
 override sortKeyPerThread: u32;
+override shDegree: u32;
 
 struct DispatchIndirect {
     dispatch_x: atomic<u32>,
@@ -54,6 +55,7 @@ struct Splat {
     //TODO: store information for 2D splat rendering
     xy: u32,
     widthHeight: u32,
+    packedColor: array<u32, 2>,
 };
 
 @group(0) @binding(0)
@@ -75,11 +77,22 @@ var<storage, read_write> sort_dispatch: DispatchIndirect;
 var<storage, read_write> splats: array<Splat>;
 @group(3) @binding(1)
 var<uniform> scaling: f32;
+@group(3) @binding(2)
+var<storage, read> colors: array<u32>; 
+//TODO: bind your data here
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
     //TODO: access your binded sh_coeff, see load.ts for how it is stored
-    return vec3<f32>(0.0);
+    let idx = splat_idx * 24 + c_idx % 2 + c_idx / 2 * 3;
+    let color_ab = unpack2x16float(colors[idx]);
+    let color_cd = unpack2x16float(colors[idx + 1]);
+
+    if (c_idx % 2 == 0) {
+        return vec3f(color_ab.x, color_ab.y, color_cd.x);
+    } else {
+        return vec3f(color_ab.y, color_cd.x, color_cd.y);
+    }
 }
 
 // spherical harmonics evaluation with Condon–Shortley phase
@@ -211,7 +224,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         vec3f(cov3D[2], cov3D[4], cov3D[5])
     );
 
-    var Cov2D = transpose(T) * transpose(Vrk) * T; // ICHECK: transpose of VRK or not
+    var Cov2D = transpose(T) * transpose(Vrk) * T;
     Cov2D[0][0] += 0.3;
     Cov2D[1][1] += 0.3;
     let cxx = Cov2D[0][0];
@@ -234,8 +247,19 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // reserve a slot in the sorted‐list buffer
     let splatIndex: u32 = atomicAdd(&sortInfos.keys_size, 1u);
 
+    if (splatIndex % keys_per_dispatch == 0u) {
+        atomicAdd(&sort_dispatch.dispatch_x, 1u);
+    }
+
     // pack and store NDC.xy into 2×16-bit floats
     let xy: u32 = pack2x16float(ndcPos.xy);
     splats[splatIndex].xy = xy;
     splats[splatIndex].widthHeight = pack2x16float(vec2f(0.005f, 0.005f) * scaling);
+    let direction = normalize(posWorld.xyz - camera.view_inv[3].xyz);
+    let color = computeColorFromSH(direction, idx, shDegree);
+
+    splats[splatIndex].packed_color[0] = pack2x16float(color.rg);
+    splats[splatIndex].packed_color[1] = pack2x16float(vec2f(color.b, 1.0f));
+    sort_depths[splatIndex] = bitcast<u32>(100.0 - view_pos.z);
+    sort_indices[splatIndex] = splatIndex;
 }
