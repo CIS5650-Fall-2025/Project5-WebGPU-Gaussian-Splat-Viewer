@@ -25,7 +25,7 @@ struct DispatchIndirect {
     dispatch_x: atomic<u32>,
     dispatch_y: u32,
     dispatch_z: u32,
-}
+};
 
 struct SortInfos {
     keys_size: atomic<u32>,  // instance_count in DrawIndirect
@@ -34,7 +34,7 @@ struct SortInfos {
     passes: u32,
     even_pass: u32,
     odd_pass: u32,
-}
+};
 
 struct CameraUniforms {
     view: mat4x4<f32>,
@@ -55,7 +55,9 @@ struct Splat {
     //TODO: store information for 2D splat rendering
     xy: u32,
     widthHeight: u32,
-    packedColor: array<u32, 2>,
+    packed_color: array<u32, 2>,
+    co: u32,
+    cp: u32
 };
 
 @group(0) @binding(0)
@@ -83,7 +85,7 @@ var<storage, read> colors: array<u32>;
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
-    //TODO: access your binded sh_coeff, see load.ts for how it is stored
+    
     let idx = splat_idx * 24 + c_idx % 2 + c_idx / 2 * 3;
     let color_ab = unpack2x16float(colors[idx]);
     let color_cd = unpack2x16float(colors[idx + 1]);
@@ -179,7 +181,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     
     let sx = scale.x * scaling;
     let sy = scale.y * scaling;
-    let sz = scale.x * scaling;
+    let sz = scale.z * scaling;
     let S = mat3x3f(
         vec3f(sx, 0.0, 0.0),
         vec3f(0.0, sy, 0.0),
@@ -234,8 +236,8 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let det = (cxx * cyy - cxy * cxy);
 
     if (det < 0.000001f) { return; }
+    let conic = vec3f(cyy / det, -cxy / det, cxx / det);
 
-    let det_inv = 1.0f / det;
     let mid = 0.5f * (cxx + cyy);
     let lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
     let lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
@@ -245,7 +247,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
 
     // reserve a slot in the sorted‐list buffer
-    let splatIndex: u32 = atomicAdd(&sortInfos.keys_size, 1u);
+    let splatIndex: u32 = atomicAdd(&sort_infos.keys_size, 1u);
 
     if (splatIndex % keys_per_dispatch == 0u) {
         atomicAdd(&sort_dispatch.dispatch_x, 1u);
@@ -260,6 +262,9 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 
     splats[splatIndex].packed_color[0] = pack2x16float(color.rg);
     splats[splatIndex].packed_color[1] = pack2x16float(vec2f(color.b, 1.0f));
-    sort_depths[splatIndex] = bitcast<u32>(100.0 - view_pos.z);
+
+    splats[splatIndex].co = pack2x16float(conic.xy);
+    splats[splatIndex].cp = pack2x16float(vec2f(conic.z, opacity));
+    sort_depths[splatIndex] = bitcast<u32>(100.0 - viewPos.z);
     sort_indices[splatIndex] = splatIndex;
 }

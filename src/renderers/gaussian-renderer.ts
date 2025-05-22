@@ -50,9 +50,9 @@ export default function get_renderer(
     20,
     GPUBufferUsage.COPY_DST | GPUBufferUsage.INDIRECT,
     new Uint32Array([6, 0, 0, 0, 0])
-  )
+  );
 
-    const rendering_buffer = createBuffer(
+  const rendering_buffer = createBuffer(
     device, 
     'render settings buffer', 
     Float32Array.BYTES_PER_ELEMENT,
@@ -61,7 +61,6 @@ export default function get_renderer(
   );
 
   const floatsPerSplat = 24;
-  const splatStride = floatsPerSplat * Float32Array.BYTES_PER_ELEMENT;
   const splat_buffer = createBuffer(
     device,
     'gauss splat buffer',
@@ -113,7 +112,7 @@ export default function get_renderer(
   });
 
   const gaussian_bind_group = device.createBindGroup({
-    label: 'preproces: gaussian bind group',
+    label: 'preprocess: gaussian bind group',
     layout: gaussianLayout,
     entries: [
       { binding: 0, resource: { buffer: pc.gaussian_3d_buffer }},
@@ -146,7 +145,19 @@ export default function get_renderer(
       module: renderModule,
       entryPoint: 'fs_main',
       targets: [{ 
-        format: presentation_format 
+        format: presentation_format,
+        blend: {
+          color: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+              operation: 'add'
+          },
+          alpha: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+              operation: 'add'
+          }
+        }
       }],
     },
   });
@@ -162,6 +173,10 @@ export default function get_renderer(
     { 
       binding: 1,
       resource: { buffer: sorter.ping_pong[0].sort_indices_buffer },
+    },
+    {
+      binding: 2,
+      resource: {buffer: camera_buffer}
     }
   ],
 });
@@ -169,8 +184,8 @@ export default function get_renderer(
   // ===============================================
   //    Command Encoder Functions
   // ===============================================
-  // 1) Preprocess compute pass
-  const preprocess_compute_pass = (encoder: GPUCommandEncoder) => {
+
+  const compute_pass = (encoder: GPUCommandEncoder) => {
     const preprocess_compute_pass = encoder.beginComputePass()
     preprocess_compute_pass.setBindGroup(0, camera_bind_group);
     preprocess_compute_pass.setBindGroup(1, gaussian_bind_group);
@@ -181,7 +196,7 @@ export default function get_renderer(
   };
 
   const render_pass = (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
-    const gaussian_pass = encoder.beginRenderPass({
+    const gaussian_render_pass = encoder.beginRenderPass({
       label: 'gaussian render pass',
       colorAttachments: [{
           view: texture_view,
@@ -191,10 +206,10 @@ export default function get_renderer(
         }
       ],
     });
-    gaussian_pass.setPipeline(render_pipeline);
-    gaussian_pass.setBindGroup(0, render_bind_group);
-    gaussian_pass.drawIndirect(indirect_buffer, 0);
-    gaussian_pass.end();
+    gaussian_render_pass.setPipeline(render_pipeline);
+    gaussian_render_pass.setBindGroup(0, render_bind_group);
+    gaussian_render_pass.drawIndirect(indirect_buffer, 0);
+    gaussian_render_pass.end();
   }
 
 
@@ -207,7 +222,7 @@ export default function get_renderer(
       encoder.copyBufferToBuffer(nulling_buffer, 0, sorter.sort_info_buffer, 0, 4);
 
       encoder.copyBufferToBuffer(nulling_buffer, 0, sorter.sort_dispatch_indirect_buffer, 0, 4);
-      preprocess_compute_pass(encoder)
+      compute_pass(encoder);
       sorter.sort(encoder);
       encoder.copyBufferToBuffer(
         sorter.sort_info_buffer, 0, indirect_buffer, 4, 4);
