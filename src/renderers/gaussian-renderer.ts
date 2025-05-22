@@ -5,7 +5,7 @@ import { get_sorter,c_histogram_block_rows,C } from '../sort/sort';
 import { Renderer } from './renderer';
 
 export interface GaussianRenderer extends Renderer {
-
+  rendering_buffer: GPUBuffer;
 }
 
 // Utility to create GPU buffers
@@ -52,6 +52,14 @@ export default function get_renderer(
     new Uint32Array([6, pc.num_points, 0, 0, 0])
   )
 
+    const rendering_buffer = createBuffer(
+    device, 
+    'render settings buffer', 
+    Float32Array.BYTES_PER_ELEMENT,
+    GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM, 
+    new Float32Array([1.0])
+  );
+
   const floatsPerSplat = 4;
   const splatStride = floatsPerSplat * Float32Array.BYTES_PER_ELEMENT;
   const splat_buffer = createBuffer(
@@ -77,22 +85,23 @@ export default function get_renderer(
     },
   });
 
-  // const sort_bind_group = device.createBindGroup({
-  //   label: 'sort',
-  //   layout: preprocess_pipeline.getBindGroupLayout(2),
-  //   entries: [
-  //     { binding: 0, resource: { buffer: sorter.sort_info_buffer } },
-  //     { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_depths_buffer } },
-  //     { binding: 2, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
-  //     { binding: 3, resource: { buffer: sorter.sort_dispatch_indirect_buffer } },
-  //   ],
-  // });
-
-  const [cameraLayout, gaussianLayout, splatLayout] = [
+  const [cameraLayout, gaussianLayout, sortingLayout, splatLayout] = [
   preprocess_pipeline.getBindGroupLayout(0),
   preprocess_pipeline.getBindGroupLayout(1),
   preprocess_pipeline.getBindGroupLayout(2),
+  preprocess_pipeline.getBindGroupLayout(3),
 ];
+
+  const sort_bind_group = device.createBindGroup({
+    label: 'sort',
+    layout: sortingLayout,
+    entries: [
+      { binding: 0, resource: { buffer: sorter.sort_info_buffer } },
+      { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_depths_buffer } },
+      { binding: 2, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
+      { binding: 3, resource: { buffer: sorter.sort_dispatch_indirect_buffer } },
+    ],
+  });
 
   const camera_bind_group = device.createBindGroup({
     label: 'preprocess: camera bind group',
@@ -153,6 +162,10 @@ export default function get_renderer(
       binding: 0,
       resource: { buffer: splat_buffer },
     },
+    {
+      binding: 1,
+      resource: { buffer: rendering_buffer },
+    }
   ],
 });
 
@@ -164,7 +177,8 @@ export default function get_renderer(
     const preprocess_compute_pass = encoder.beginComputePass()
     preprocess_compute_pass.setBindGroup(0, camera_bind_group);
     preprocess_compute_pass.setBindGroup(1, gaussian_bind_group);
-    preprocess_compute_pass.setBindGroup(2, splat_bind_group);
+    preprocess_compute_pass.setBindGroup(2, sort_bind_group);
+    preprocess_compute_pass.setBindGroup(3, splat_bind_group);
     preprocess_compute_pass.dispatchWorkgroups(Math.ceil(pc.num_points / C.histogram_wg_size));
     preprocess_compute_pass.end();
   };
@@ -192,10 +206,17 @@ export default function get_renderer(
   // ===============================================
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
+
+      encoder.copyBufferToBuffer(nulling_buffer, 0, sorter.sort_info_buffer, 0, 4);
+
+      encoder.copyBufferToBuffer(nulling_buffer, 0, sorter.sort_dispatch_indirect_buffer, 0, 4);
       preprocess_compute_pass(encoder)
       // sorter.sort(encoder);
+      encoder.copyBufferToBuffer(
+        sorter.sort_info_buffer, 0, indirect_buffer, 4, 4);
       render_pass(encoder, texture_view);
     },
     camera_buffer,
+    rendering_buffer
   };
 }

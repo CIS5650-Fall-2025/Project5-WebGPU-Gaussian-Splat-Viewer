@@ -67,16 +67,15 @@ var<uniform> camera: CameraUniforms;
 var<storage, read> gaussians: array<Gaussian>;
 
 //TODO: bind your data here
-@group(2) @binding(0)
+var<storage, read_write> sort_infos: SortInfos;
+@group(2) @binding(1)
+var<storage, read_write> sort_depths : array<u32>;
+@group(2) @binding(2)
+var<storage, read_write> sort_indices : array<u32>;
+@group(2) @binding(3)
+var<storage, read_write> sort_dispatch: DispatchIndirect;
+@group(3) @binding(0)
 var<storage, read_write> splats: array<Splat>;
-
-// var<storage, read_write> sort_infos: SortInfos;
-// @group(2) @binding(1)
-// var<storage, read_write> sort_depths : array<u32>;
-// @group(2) @binding(2)
-// var<storage, read_write> sort_indices : array<u32>;
-// @group(2) @binding(3)
-// var<storage, read_write> sort_dispatch: DispatchIndirect;
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
@@ -132,15 +131,33 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let xypack = unpack2x16float(g.pos_opacity[0]);
     let zwpack = unpack2x16float(g.pos_opacity[1]);
 
-    let positionWorld = vec4f(xypack.x, xypack.y, zwpack.x, 1.0);
+    let posWorld = vec4f(xypack.x, xypack.y, zwpack.x, 1.0);
     let opacity = zwpack.y;
 
-    // Project world space to screen coordinates
-    let pos_clip = camera.proj * camera.view * positionWorld;
-    let screen_pos = pos_clip.xy / pos_clip.w;
+    // transform world position to view to clip to NDC
+    let viewPos: vec4f = camera.view * posWorld;
+    let clipPos: vec4f = camera.proj * viewPos;
+    let ndcPos: vec3f  = clipPos.xyz / clipPos.w;
 
-    let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
+    // frustum‐cull with a 1.2× margin in XY, full [0,1] in Z
+    if (ndcPos.x < -1.2 || ndcPos.x > 1.2 ||
+        ndcPos.y < -1.2 || ndcPos.y > 1.2 ||
+        ndcPos.z <  0.0 || ndcPos.z >  1.0) {
+        return;
+    }
+
+    let keys_per_dispatch = workgroupSize * sortKeyPerThread;  
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
 
-    splats[idx].xy = pack2x16float(screen_pos);
+    let totalPasses:   u32 = sort_infos.passes;
+    let depthValue:   f32  = sort_depths[0];
+    let indexValue:   u32  = sort_indices[0];
+    let dispatchGroup: u32 = sort_dispatch.dispatch_z;
+
+    // reserve a slot in the sorted‐list buffer
+    let splatIndex: u32 = atomicAdd(&sortInfos.keys_size, 1u);
+
+    // pack and store NDC.xy into 2×16-bit floats
+    let xyPacked: u32 = pack2x16float(ndcPos.xy);
+    splats[splatIndex].xyPacked = xyPacked;
 }
