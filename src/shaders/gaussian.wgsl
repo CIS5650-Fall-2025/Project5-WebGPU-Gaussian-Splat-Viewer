@@ -4,9 +4,9 @@ struct VertexOutput {
     @location(1) color: vec4<f32>,
     @location(2) conic_opacity: vec4<f32>,
     @location(3) center: vec2<f32>
+};
 
 struct Splat {
-    //TODO: information defined in preprocess compute shader
     xy: u32,
     widthHeight: u32,
     packed_color: array<u32, 2>,
@@ -24,7 +24,7 @@ struct CameraUniforms {
 };
 
 @group(0) @binding(0)
-var<storage, read_write> splats: array<Splat>;
+var<storage, read> splats: array<Splat>;
 @group(0) @binding(1)
 var<storage, read> sort_indices : array<u32>;
 @group(0) @binding(2)
@@ -80,7 +80,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let ndc = ((windowPos / camera.viewport) * 2.0 - vec2f(1.0)) * vec2f(1.0, -1.0);
 
     let d = ndc - in.center;
-    let d_flipped = vec2f(-d.x, d.y);
+    var d_flipped = vec2f(-d.x, d.y);
     d_flipped *= camera.viewport * 0.5f;
 
     let conic = in.conic_opacity;

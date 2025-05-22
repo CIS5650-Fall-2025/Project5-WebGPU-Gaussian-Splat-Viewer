@@ -132,17 +132,16 @@ export default function get_renderer(
   // ===============================================
   //    Create Render Pipeline and Bind Groups
   // ===============================================
-  const renderModule = device.createShaderModule({ code: renderWGSL });
 
   const render_pipeline = device.createRenderPipeline({
     label: 'gauss:render-pipeline',
     layout: 'auto',
     vertex: {
-      module: renderModule,
+      module: device.createShaderModule({ code: renderWGSL }),
       entryPoint: 'vs_main',
     },
     fragment: {
-      module: renderModule,
+      module: device.createShaderModule({ code: renderWGSL }),
       entryPoint: 'fs_main',
       targets: [{ 
         format: presentation_format,
@@ -187,6 +186,7 @@ export default function get_renderer(
 
   const compute_pass = (encoder: GPUCommandEncoder) => {
     const preprocess_compute_pass = encoder.beginComputePass()
+    preprocess_compute_pass.setPipeline(preprocess_pipeline);
     preprocess_compute_pass.setBindGroup(0, camera_bind_group);
     preprocess_compute_pass.setBindGroup(1, gaussian_bind_group);
     preprocess_compute_pass.setBindGroup(2, sort_bind_group);

@@ -52,7 +52,6 @@ struct Gaussian {
 };
 
 struct Splat {
-    //TODO: store information for 2D splat rendering
     xy: u32,
     widthHeight: u32,
     packed_color: array<u32, 2>,
@@ -133,7 +132,6 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
 @compute @workgroup_size(workgroupSize,1,1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
-    //TODO: set up pipeline as described in instruction
 
     // early exit
     if (idx >= arrayLength(&gaussians)) {
@@ -142,10 +140,10 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 
     // fetch Gaussian data
     let vert = gaussians[idx];
-    let xy = unpack2x16float(vert.pos_opacity[0]);
+    let xi = unpack2x16float(vert.pos_opacity[0]);
     let za = unpack2x16float(vert.pos_opacity[1]);
 
-    let posWorld = vec4f(xy.x, xy.y, za.x, 1.0);
+    let posWorld = vec4f(xi.x, xi.y, xi.x, 1.0);
     let opacity = 1.0f / (1.0f + exp(-za.y));
 
     // transform world position to view to clip to NDC
