@@ -1,10 +1,11 @@
 # Project5-WebGPU-Gaussian-Splat-Viewer
 
-**University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 4**
+**University of Pennsylvania, CIS 5650: GPU Programming and Architecture, Project 3**
 
-* (TODO) YOUR NAME HERE
-* Tested on: (TODO) **Google Chrome 222.2** on
-  Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
+* Shreyas Singh
+    * [LinkedIn](https://linkedin.com/in/shreyassinghiitr)
+* Tested on: Apple MacBook Pro, Apple M2 Pro @ 3.49 GHz, 19-core GPU
+
 
 ### Live Demo
 
@@ -14,13 +15,16 @@
 
 [![](img/video.mp4)](TODO)
 
-### (TODO: Your README)
+### Project Overview
 
-*DO NOT* leave the README to the last minute! It is a crucial part of the
-project, and we will not be able to grade you without a good README.
+#### Gaussian Splatting
 
-This assignment has a considerable amount of performance analysis compared
-to implementation work. Complete the implementation early to leave time!
+Gaussian splatting is a way to draw 3D scenes by treating each point as a little “splat” instead of a triangle. Each splat is a 3D Gaussian defined by its center, shape, and color (often encoded with spherical harmonics). To render, we transform these Gaussians into screen space, drop the ones that lie outside the view, sort the remaining Gaussians back-to-front, and draw them as small quads whose opacity falls off smoothly from the center.
+
+#### Project Overview
+This WebGPU project builds a real-time viewer for a pre-trained Gaussian scene. First, a compute pass culls off-screen Gaussians, computes each splat’s 2D position, size, and color, and builds an indirect draw command. Then a single indirect draw call runs a vertex shader to place each quad and a fragment shader to shade it using the Gaussian equation. The GUI sliders let us tweak the global scale and color detail on the fly, so we can interactively explore the reconstructed scene.
+
+
 
 ### Credits
 
